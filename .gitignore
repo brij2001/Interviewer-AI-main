@@ -1,0 +1,26 @@
+# Ignore environment files
+backend/.env
+
+# Ignore Python virtual environment
+backend/venv/*
+
+# Ignore Python cache files
+**/__pycache__/
+
+# Ignore Node.js modules
+frontend/node_modules/*
+
+# Ignore log files
+*.log
+
+# Ignore temporary files
+*.tmp
+*.temp
+
+# Ignore OS generated files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE specific files
+.vscode/
+.idea/
