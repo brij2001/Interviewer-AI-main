@@ -1,7 +1,6 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 import os
-from time import sleep
 class Settings(BaseSettings):
     PROJECT_NAME: str = "AI Coding Interviewer"
     VERSION: str = "1.0.0"
@@ -12,7 +11,6 @@ class Settings(BaseSettings):
     PORT: int = int(os.getenv("PORT", "8080"))  # Cloud Run uses PORT env variable
     ENVIRONMENT: str = "production"  # Default to production for cloud
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "*")  # Comma-separated list of origins
-
     # OpenAI settings
     OPENAI_API_KEY: str
     MODEL_ENDPOINT: str = "https://api.openai.com/v1"  # Default OpenAI endpoint
@@ -43,3 +41,4 @@ def get_settings():
     return Settings()
 
 settings = get_settings()
+print("CORS_ORIGINS: ", settings.CORS_ORIGINS.split(","))
