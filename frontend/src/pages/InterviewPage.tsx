@@ -12,7 +12,7 @@ import {
   Tab,
 } from '@mui/material';
 import { useParams } from 'react-router-dom';
-import InfoIcon from '@mui/icons-material/Info';
+// import InfoIcon from '@mui/icons-material/Info';
 import ReactMarkdown from 'react-markdown';
 
 import CodeEditor from '../components/CodeEditor';
