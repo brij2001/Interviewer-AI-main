@@ -1,8 +1,2 @@
-[build]
-  base = "frontend"
-  publish = "frontend/build"
-  command = "npm run build"
-
-
 [build.ignore]
   command = "git diff --quiet HEAD^ HEAD frontend/ || exit 0" 
