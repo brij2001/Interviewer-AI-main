@@ -11,14 +11,14 @@ import {
   Tabs,
   Tab,
 } from '@mui/material';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import InfoIcon from '@mui/icons-material/Info';
 import ReactMarkdown from 'react-markdown';
 
 import CodeEditor from '../components/CodeEditor';
 import ChatInterface from '../components/ChatInterface';
 import { interviewAPI } from '../services/api';
-import { EvaluationResponse } from '../services/api';
+import { EvaluationResponse, FinalEvaluationResponse } from '../services/api';
 
 interface Message {
   sender: 'interviewer' | 'candidate';
@@ -39,13 +39,13 @@ function TabPanel(props: TabPanelProps) {
     <div
       role="tabpanel"
       hidden={value !== index}
-      id={`simple-tabpanel-${index}`}
-      aria-labelledby={`simple-tab-${index}`}
-      style={{ height: '100%', overflow: 'auto' }}
+      id={`tabpanel-${index}`}
+      aria-labelledby={`tab-${index}`}
+      style={{ height: '100%', overflowY: 'auto', padding: '16px' }}
       {...other}
     >
       {value === index && (
-        <Box sx={{ p: 2, height: '100%' }}>
+        <Box sx={{ height: '100%' }}>
           {children}
         </Box>
       )}
@@ -55,7 +55,6 @@ function TabPanel(props: TabPanelProps) {
 
 const InterviewPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const navigate = useNavigate();
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [code, setCode] = useState<string>('');
@@ -106,6 +105,18 @@ const InterviewPage: React.FC = () => {
 
   // Function to format evaluation results in a more readable way
   const formatEvaluation = (evaluation: EvaluationResponse) => {
+    // For debugging
+    console.log('Formatting evaluation:', evaluation);
+    
+    // If we have no evaluation or empty evaluation object, show a message
+    if (!evaluation || Object.keys(evaluation).length === 0) {
+      return (
+        <Box>
+          <Typography>Unable to display evaluation. The response was empty or invalid.</Typography>
+        </Box>
+      );
+    }
+    
     return (
       <Box>
         {evaluation.correctness !== undefined && (
@@ -149,12 +160,13 @@ const InterviewPage: React.FC = () => {
           </Box>
         )}
         
-        {evaluation.feedback && (
-          <Box>
-            <Typography variant="subtitle1" fontWeight="bold">Detailed Feedback</Typography>
-            <Typography variant="body1" style={{ whiteSpace: 'pre-line' }}>{evaluation.feedback}</Typography>
-          </Box>
-        )}
+        {/* Always display feedback section, with fallback for missing feedback */}
+        <Box>
+          <Typography variant="subtitle1" fontWeight="bold">Detailed Feedback</Typography>
+          <Typography variant="body1" style={{ whiteSpace: 'pre-line' }}>
+            {evaluation.feedback || 'No detailed feedback was provided for this evaluation.'}
+          </Typography>
+        </Box>
       </Box>
     );
   };
@@ -292,19 +304,54 @@ const InterviewPage: React.FC = () => {
       let evaluationResponse: EvaluationResponse = { feedback: "" };
       let evaluationContent = "Your code has been evaluated. Check the Evaluation tab below to see the results.";
       
+      // Log the raw evaluation for debugging
+      console.log('Raw evaluation result:', result.evaluation);
+      
       try {
         if (typeof result.evaluation === 'string') {
           // Try to parse the string as JSON first
           try {
-            const parsedEvaluation = JSON.parse(result.evaluation);
-            evaluationResponse = parsedEvaluation;
+            // Sometimes the string might have extra content before or after the JSON
+            // Try to extract just the JSON part using regex
+            const jsonMatch = result.evaluation.match(/\{[\s\S]*\}/);
+            
+            if (jsonMatch) {
+              const jsonStr = jsonMatch[0];
+              const parsedEvaluation = JSON.parse(jsonStr);
+              evaluationResponse = parsedEvaluation;
+              
+              // Extract a summary for the chat interface
+              if (parsedEvaluation.feedback) {
+                // Get the first few sentences of the feedback for the chat message
+                const sentences = parsedEvaluation.feedback.split(/[.!?]+\s+/).filter(Boolean);
+                if (sentences.length > 0) {
+                  evaluationContent = sentences.slice(0, 2).join('. ') + '.';
+                  evaluationContent += " Check the Evaluation tab for full details.";
+                }
+              }
+            } else {
+              // If we couldn't find a JSON object, use the string as feedback
+              evaluationContent = result.evaluation;
+              evaluationResponse = { feedback: result.evaluation };
+            }
           } catch (jsonError) {
+            console.error('Error parsing JSON from evaluation:', jsonError);
             // If it's not JSON, treat it as plain text feedback
             evaluationContent = result.evaluation;
             evaluationResponse = { feedback: result.evaluation };
           }
         } else if (result.evaluation && typeof result.evaluation === 'object') {
           evaluationResponse = result.evaluation as EvaluationResponse;
+          
+          // Extract a summary for the chat interface
+          if (evaluationResponse.feedback) {
+            // Get the first few sentences of the feedback for the chat message
+            const sentences = evaluationResponse.feedback.split(/[.!?]+\s+/).filter(Boolean);
+            if (sentences.length > 0) {
+              evaluationContent = sentences.slice(0, 2).join('. ') + '.';
+              evaluationContent += " Check the Evaluation tab for full details.";
+            }
+          }
         } else {
           evaluationContent = "The code was submitted successfully, but there was an issue with the evaluation response format.";
           evaluationResponse = { feedback: evaluationContent };
@@ -313,6 +360,11 @@ const InterviewPage: React.FC = () => {
         console.error('Error parsing evaluation result:', error);
         evaluationContent = "The code was submitted successfully, but there was an issue with the evaluation response.";
         evaluationResponse = { feedback: evaluationContent };
+      }
+      
+      // Make sure evaluation response is not null or undefined
+      if (!evaluationResponse) {
+        evaluationResponse = { feedback: "Unable to process evaluation response." };
       }
       
       // Set the current evaluation for the tab panel
@@ -345,8 +397,6 @@ const InterviewPage: React.FC = () => {
     return true;
   };
 
-  const handleSubmitCode = handleCodeEvaluation; // Alias for backward compatibility
-
   const handleFinishInterview = async () => {
     if (!sessionId) return;
 
@@ -354,17 +404,72 @@ const InterviewPage: React.FC = () => {
     try {
       const result = await interviewAPI.getFinalEvaluation(parseInt(sessionId));
       
-      // Add final evaluation message
+      // Log the raw evaluation data for debugging
+      console.log('Final evaluation result:', result.evaluation);
+      
+      // Process the evaluation data
+      let evaluationContent = '';
+      let evaluationData: EvaluationResponse = { feedback: '' };
+      
+      // Process the evaluation result
+      if (typeof result.evaluation === 'string') {
+        // Try to parse the string as JSON if it is one
+        try {
+          const jsonMatch = result.evaluation.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsedEvaluation = JSON.parse(jsonMatch[0]) as FinalEvaluationResponse;
+            evaluationData = {
+              ...parsedEvaluation,
+              feedback: parsedEvaluation.detailed_feedback || result.evaluation
+            };
+            evaluationContent = parsedEvaluation.detailed_feedback || result.evaluation;
+          } else {
+            evaluationContent = result.evaluation;
+            evaluationData = { feedback: result.evaluation };
+          }
+        } catch (error) {
+          console.error('Error parsing final evaluation JSON:', error);
+          evaluationContent = result.evaluation;
+          evaluationData = { feedback: result.evaluation };
+        }
+      } else if (result.evaluation && typeof result.evaluation === 'object') {
+        // If it's already an object
+        const evalObj = result.evaluation as FinalEvaluationResponse;
+        evaluationData = {
+          ...evalObj,
+          feedback: evalObj.detailed_feedback || ''
+        };
+        evaluationContent = evalObj.detailed_feedback || 
+          "Thank you for completing the interview. Please check the Evaluation tab for your assessment.";
+      } else {
+        evaluationContent = "Thank you for completing the interview. The evaluation could not be processed.";
+        evaluationData = { feedback: evaluationContent };
+      }
+      
+      // Add final evaluation message to chat
       const evaluationMessage: Message = {
         sender: 'interviewer',
-        content: result.evaluation,
+        content: evaluationContent,
         timestamp: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, evaluationMessage]);
       
-      // Navigate to results page or show final evaluation
+      // Set the current evaluation for the tab panel
+      setCurrentEvaluation(evaluationData);
+      
+      // Switch to the Evaluation tab
+      setTabValue(1);
+      
     } catch (error) {
       console.error('Error getting final evaluation:', error);
+      
+      // Add error message to chat
+      const errorMessage: Message = {
+        sender: 'interviewer',
+        content: "There was an error generating the final evaluation. Please try again or contact support.",
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -412,12 +517,16 @@ const InterviewPage: React.FC = () => {
                   Evaluate Code
                 </Button>
               </Tooltip>
-              <Tooltip title="Information">
-                <InfoIcon color="info" fontSize="small" sx={{ ml: 1 }} />
-              </Tooltip>
-              <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
-                Tip: You can also say "I'm done" in chat
-              </Typography>
+              <Button
+                variant="contained"
+                color="success"
+                onClick={handleCodeEvaluation}
+                disabled={isLoading || !code.trim()}
+                sx={{ ml: 1 }}
+              >
+                Submit Code
+              </Button>
+              
               <Button
                 variant="outlined"
                 color="secondary"
@@ -451,7 +560,9 @@ const InterviewPage: React.FC = () => {
               </TabPanel>
               <TabPanel value={tabValue} index={1}>
                 {currentEvaluation ? (
-                  formatEvaluation(currentEvaluation)
+                  <Box sx={{ maxHeight: '100%', overflowY: 'auto' }}>
+                    {formatEvaluation(currentEvaluation)}
+                  </Box>
                 ) : (
                   <Typography>No evaluation available yet. Submit your code for evaluation first.</Typography>
                 )}

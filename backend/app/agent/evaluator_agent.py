@@ -1,5 +1,6 @@
 from typing import Dict, Any, Optional
 import json
+import re
 
 from .base_agent import BaseAgent
 from .prompts import CODE_EVALUATION_TEMPLATE
@@ -55,24 +56,35 @@ class EvaluatorAgent(BaseAgent):
         # Try to extract structured evaluation from the text
         try:
             # First try to find if there's a JSON structure in the response
-            start_idx = evaluation_text.find('{')
-            end_idx = evaluation_text.rfind('}') + 1
+            # More robust JSON extraction using regex to find anything that looks like a JSON object
+            json_matches = re.findall(r'(\{[\s\S]*?\})', evaluation_text)
             
-            if start_idx >= 0 and end_idx > start_idx:
-                json_str = evaluation_text[start_idx:end_idx]
-                evaluation = json.loads(json_str)
-            else:
-                # If no JSON structure, create a semi-structured evaluation
-                evaluation = {
-                    "correctness": self._extract_score(evaluation_text, "correctness"),
-                    "time_complexity": self._extract_complexity(evaluation_text, "time"),
-                    "space_complexity": self._extract_complexity(evaluation_text, "space"),
-                    "code_quality": self._extract_score(evaluation_text, "quality"),
-                    "feedback": evaluation_text,
-                    "suggestions": self._extract_suggestions(evaluation_text)
-                }
-        except Exception:
+            if json_matches:
+                # Try each match to find valid JSON
+                for json_str in json_matches:
+                    try:
+                        evaluation = json.loads(json_str)
+                        # If we found valid JSON with expected fields, use it
+                        if any(key in evaluation for key in ["correctness", "feedback", "time_complexity"]):
+                            # Make sure required fields exist
+                            if "feedback" not in evaluation or not evaluation["feedback"]:
+                                evaluation["feedback"] = evaluation_text
+                            return evaluation
+                    except json.JSONDecodeError:
+                        continue
+            
+            # If no JSON found or none were valid, create a semi-structured evaluation
+            evaluation = {
+                "correctness": self._extract_score(evaluation_text, "correctness"),
+                "time_complexity": self._extract_complexity(evaluation_text, "time"),
+                "space_complexity": self._extract_complexity(evaluation_text, "space"),
+                "code_quality": self._extract_score(evaluation_text, "quality"),
+                "feedback": evaluation_text,
+                "suggestions": self._extract_suggestions(evaluation_text)
+            }
+        except Exception as e:
             # Fallback to unstructured evaluation
+            print(f"Error parsing evaluation: {str(e)}")
             evaluation = {
                 "feedback": evaluation_text,
                 "suggestions": [],
@@ -81,55 +93,82 @@ class EvaluatorAgent(BaseAgent):
                 "space_complexity": None,
                 "code_quality": None
             }
+        
+        # Ensure feedback field is not empty
+        if "feedback" not in evaluation or not evaluation["feedback"]:
+            evaluation["feedback"] = evaluation_text
             
         return evaluation
     
-    def _extract_score(self, text: str, metric: str) -> Optional[int]:
-        """Attempt to extract a numerical score from the evaluation text."""
-        try:
-            # Simple heuristic to find something like "correctness: 8/10"
-            lower_text = text.lower()
-            idx = lower_text.find(metric.lower())
-            if idx >= 0:
-                # Look for numbers after the metric
-                sub_text = lower_text[idx:idx+100]  # Limit search space
-                # Find digits followed by /10 or out of 10
-                import re
-                match = re.search(r'(\d+)(?:/10| out of 10)', sub_text)
-                if match:
-                    return int(match.group(1))
-            return None
-        except:
-            return None
+    def _extract_score(self, text: str, score_type: str) -> Optional[int]:
+        """Extract numerical score from text."""
+        # Look for patterns like "Correctness: 8/10" or "Code Quality: 7 out of 10"
+        patterns = [
+            rf"{score_type}[:\s]+(\d+)[/\s]*10",
+            rf"{score_type}[:\s]+(\d+)[\s]*out of[\s]*10",
+            rf"{score_type}[:\s]*(\d+)"
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            if matches:
+                try:
+                    return int(matches[0])
+                except (ValueError, IndexError):
+                    pass
+        return None
     
     def _extract_complexity(self, text: str, complexity_type: str) -> Optional[str]:
-        """Attempt to extract complexity notation (e.g., O(n)) from the text."""
-        try:
-            # Look for big-O notation
-            import re
-            # Find patterns like O(n), O(n^2), O(log n), etc.
-            match = re.search(r'O\([^)]+\)', text)
-            if match:
-                return match.group(0)
-            return None
-        except:
-            return None
+        """Extract time or space complexity from text."""
+        # Look for sections describing complexity
+        section_pattern = rf"{complexity_type}\s*complexity[:\s]+(.*?)(?=\n\n|\n[A-Z]|$)"
+        matches = re.findall(section_pattern, text, re.IGNORECASE | re.DOTALL)
+        
+        if matches:
+            # Cleanup and return first match
+            complexity = matches[0].strip()
+            # Look for Big O notation
+            big_o_pattern = r"O\([^)]+\)"
+            big_o_matches = re.findall(big_o_pattern, complexity)
+            if big_o_matches:
+                return big_o_matches[0]
+            return complexity[:100]  # Limit length
+        return None
     
     def _extract_suggestions(self, text: str) -> list:
-        """Extract suggestions for improvement from the evaluation text."""
+        """Extract improvement suggestions from text."""
         suggestions = []
-        try:
-            # Look for sections that mention improvements or suggestions
-            lower_text = text.lower()
-            keywords = ["suggest", "improv", "could be better", "recommendation", "consider"]
+        
+        # Look for suggestions section
+        section_pattern = r"suggestions|improvements|could be improved|potential improvements"
+        matches = re.findall(section_pattern, text, re.IGNORECASE)
+        
+        if matches:
+            # Find the position of the first match
+            pos = text.lower().find(matches[0])
+            if pos != -1:
+                # Extract text after this position until next major section
+                suggestions_text = text[pos:]
+                # Split by lines and look for bullet points or numbered items
+                lines = suggestions_text.split('\n')
+                for line in lines:
+                    # Look for bullet points, numbers, or dashes
+                    if re.match(r'^\s*[\-\*\d\.\)\•]\s+', line):
+                        suggestions.append(line.strip())
+        
+        # If we couldn't find structured suggestions, try to find sentences containing suggestion keywords
+        if not suggestions:
+            suggestion_patterns = [
+                r"you could\s+([^\.]+)",
+                r"consider\s+([^\.]+)",
+                r"try\s+([^\.]+)",
+                r"recommend\s+([^\.]+)"
+            ]
             
-            # Find sentences containing these keywords
-            import re
-            sentences = re.split(r'[.!?]', text)
-            for sentence in sentences:
-                if any(keyword in sentence.lower() for keyword in keywords):
-                    suggestions.append(sentence.strip())
-                    
-            return suggestions
-        except:
-            return [] 
+            for pattern in suggestion_patterns:
+                matches = re.findall(pattern, text, re.IGNORECASE)
+                for match in matches:
+                    suggestions.append(match.strip())
+        
+        # Limit number of suggestions
+        return suggestions[:5] 

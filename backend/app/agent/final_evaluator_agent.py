@@ -1,5 +1,6 @@
 from typing import Dict, List, Any
 import json
+import re
 
 from .base_agent import BaseAgent
 from .prompts import FINAL_EVALUATION_TEMPLATE
@@ -10,7 +11,10 @@ class FinalEvaluatorAgent(BaseAgent):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Initialize evaluation chain
-        self.evaluation_chain = self.create_chain(FINAL_EVALUATION_TEMPLATE)
+        self.evaluation_chain = self.create_chain(
+            FINAL_EVALUATION_TEMPLATE,
+            memory=self.memory  # Use memory from BaseAgent
+        )
     
     def evaluate_interview(
         self,
@@ -36,44 +40,75 @@ class FinalEvaluatorAgent(BaseAgent):
         # Convert interview notes to a string format for the prompt
         interview_notes_str = json.dumps(interview_notes, indent=2)
         
-        # Run evaluation
-        evaluation_text = self.evaluation_chain.run(
-            interview_notes=interview_notes_str
-        )
+        # Prepare input data including the required 'human' key for memory compatibility
+        input_data = {
+            "interview_notes": interview_notes_str,
+            "human": "Please provide a final evaluation of this candidate based on their interview notes."
+        }
         
-        # Try to extract structured evaluation from the text
         try:
-            # First try to find if there's a JSON structure in the response
-            start_idx = evaluation_text.find('{')
-            end_idx = evaluation_text.rfind('}') + 1
+            # Try running without memory first if there are issues
+            try:
+                # Run evaluation with memory
+                evaluation_text = self.evaluation_chain.run(**input_data)
+            except KeyError as e:
+                if str(e) == "'human'":
+                    # If 'human' key error occurs, try creating a new chain without memory
+                    print("Memory 'human' key error detected, trying without memory...")
+                    # Create a new chain without memory
+                    temp_chain = self.create_chain(FINAL_EVALUATION_TEMPLATE, memory=None)
+                    # Run without memory dependency
+                    evaluation_text = temp_chain.run(interview_notes=interview_notes_str)
+                else:
+                    raise
             
-            if start_idx >= 0 and end_idx > start_idx:
-                json_str = evaluation_text[start_idx:end_idx]
-                evaluation = json.loads(json_str)
-            else:
-                # If no JSON structure, create a semi-structured evaluation
-                evaluation = {
-                    "technical_skill": self._extract_score(evaluation_text, "technical"),
-                    "problem_solving": self._extract_score(evaluation_text, "problem"),
-                    "communication": self._extract_score(evaluation_text, "communicat"),
-                    "overall_rating": self._extract_score(evaluation_text, "overall"),
-                    "strengths": self._extract_list(evaluation_text, "strength"),
-                    "areas_for_improvement": self._extract_list(evaluation_text, "improv"),
-                    "recommendation": self._extract_recommendation(evaluation_text),
-                    "detailed_feedback": evaluation_text
-                }
-        except Exception:
-            # Fallback to unstructured evaluation
+            # Try to extract structured evaluation from the text
+            # First try to find if there's a JSON structure in the response
+            # More robust JSON extraction using regex to find anything that looks like a JSON object
+            json_matches = re.findall(r'(\{[\s\S]*?\})', evaluation_text)
+            
+            if json_matches:
+                # Try each match to find valid JSON
+                for json_str in json_matches:
+                    try:
+                        evaluation = json.loads(json_str)
+                        # If we found valid JSON with expected fields, use it
+                        if any(key in evaluation for key in ["technical_skill", "overall_rating", "recommendation"]):
+                            # Make sure required fields exist
+                            if "detailed_feedback" not in evaluation or not evaluation["detailed_feedback"]:
+                                evaluation["detailed_feedback"] = evaluation_text
+                            return evaluation
+                    except json.JSONDecodeError:
+                        continue
+            
+            # If no JSON structure, create a semi-structured evaluation
             evaluation = {
-                "detailed_feedback": evaluation_text,
-                "technical_skill": None,
-                "problem_solving": None,
-                "communication": None,
-                "overall_rating": None,
-                "strengths": [],
-                "areas_for_improvement": [],
-                "recommendation": None
+                "technical_skill": self._extract_score(evaluation_text, "technical"),
+                "problem_solving": self._extract_score(evaluation_text, "problem"),
+                "communication": self._extract_score(evaluation_text, "communicat"),
+                "overall_rating": self._extract_score(evaluation_text, "overall"),
+                "strengths": self._extract_list(evaluation_text, "strength"),
+                "areas_for_improvement": self._extract_list(evaluation_text, "improv"),
+                "recommendation": self._extract_recommendation(evaluation_text),
+                "detailed_feedback": evaluation_text
             }
+        except Exception as e:
+            # Log the error and provide a fallback evaluation
+            print(f"Error in final evaluator: {str(e)}")
+            evaluation = {
+                "detailed_feedback": f"Unable to generate a complete evaluation due to a technical issue. The system encountered the following error: {str(e)}",
+                "technical_skill": 5,
+                "problem_solving": 5,
+                "communication": 5,
+                "overall_rating": 5,
+                "strengths": ["Could not analyze strengths due to system error"],
+                "areas_for_improvement": ["Could not analyze areas for improvement due to system error"],
+                "recommendation": {"decision": "undecided", "confidence": "low"}
+            }
+        
+        # Ensure detailed_feedback field is not empty
+        if "detailed_feedback" not in evaluation or not evaluation["detailed_feedback"]:
+            evaluation["detailed_feedback"] = "No detailed feedback could be generated for this interview."
             
         return evaluation
     

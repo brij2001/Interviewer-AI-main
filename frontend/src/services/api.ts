@@ -1,7 +1,8 @@
 import axios, { AxiosInstance } from 'axios';
 
-// const BASE_URL = process.env.REACT_APP_API_URL || 'https://interviewer-ai-710553458071.us-central1.run.app/api/v1';
+// Use the environment variable for the API URL
 const BASE_URL = process.env.REACT_APP_API_URL || 'https://interviewer-ai-710553458071.us-central1.run.app/api/v1'
+
 
 interface InterviewSession {
   id: number;
@@ -15,7 +16,8 @@ interface InterviewSession {
   updated_at: string;
 }
 
-interface CodeSubmission {
+// Change to export the interface so it can be used elsewhere
+export interface CodeSubmission {
   id: number;
   session_id: number;
   problem_statement: string;
@@ -33,6 +35,22 @@ export interface EvaluationResponse {
   space_complexity?: string;
   code_quality?: number;
   suggestions?: string[];
+  [key: string]: any;
+}
+
+// Interface for final evaluation response
+export interface FinalEvaluationResponse {
+  technical_skill?: number;
+  problem_solving?: number;
+  communication?: number;
+  overall_rating?: number;
+  detailed_feedback?: string;
+  strengths?: string[];
+  areas_for_improvement?: string[];
+  recommendation?: {
+    decision?: string;
+    confidence?: string;
+  };
   [key: string]: any;
 }
 
@@ -106,7 +124,7 @@ class InterviewAPI {
   // Get final evaluation
   async getFinalEvaluation(
     sessionId: number
-  ): Promise<{ evaluation: string; session: InterviewSession }> {
+  ): Promise<{ evaluation: string | FinalEvaluationResponse; session: InterviewSession }> {
     const response = await this.api.get(`/sessions/${sessionId}/final-evaluation`);
     return response.data;
   }
