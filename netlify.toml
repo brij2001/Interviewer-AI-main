@@ -1,2 +1,2 @@
-[build.ignore]
-  command = git diff --quiet HEAD^ HEAD frontend/
+[build]
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF frontend/"
