@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 
-const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
+// const BASE_URL = process.env.REACT_APP_API_URL || 'https://interviewer-ai-710553458071.us-central1.run.app/api/v1';
+const BASE_URL = process.env.REACT_APP_API_URL || 'https://interviewer-ai-710553458071.us-central1.run.app/api/v1'
 
 interface InterviewSession {
   id: number;

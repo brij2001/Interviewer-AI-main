@@ -9,6 +9,7 @@ backend/venv/*
 
 # Ignore Node.js modules
 frontend/node_modules/*
+frontend/build/*
 
 # Ignore log files
 *.log
