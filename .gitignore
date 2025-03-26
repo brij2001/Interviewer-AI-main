@@ -1,6 +1,6 @@
 # Ignore environment files
 backend/.env
-
+backend/.env.production
 # Ignore Python virtual environment
 backend/venv/*
 

@@ -1,0 +1,25 @@
+# Environment
+.env
+.env.*
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local development
+.vscode/
+.idea/
+
+# Database
+*.db
+*.sqlite
+
+# Vector store
+chroma_db/
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore 
