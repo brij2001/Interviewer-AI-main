@@ -1,13 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 from enum import Enum
 import json
+import hashlib
 
 from ..core.database import get_db
-from ..models.interview import InterviewSession, CodeSubmissionModel, InterviewStage as DBInterviewStage
+from ..models.interview import InterviewSession, CodeSubmissionModel, InterviewStage as DBInterviewStage, SessionToken
 from ..agent import CoordinatorAgent, InterviewStage as AgentInterviewStage
 
 class RoleType(str, Enum):
@@ -309,3 +310,70 @@ def list_sessions(
     """List all interview sessions."""
     sessions = db.query(InterviewSession).all()
     return [session.to_dict() for session in sessions]
+
+# New model for session token
+class TokenRequest(BaseModel):
+    token: str
+    device_info: Optional[Dict[str, str]] = None
+
+@router.post("/sessions/{session_id}/token")
+def create_session_token(
+    session_id: int,
+    token_data: TokenRequest,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Create a new session token for a specific interview session."""
+    # Check if session exists
+    session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+    
+    # Check if a token already exists for this session
+    existing_token = db.query(SessionToken).filter(SessionToken.session_id == session_id).first()
+    if existing_token:
+        # Update the existing token
+        existing_token.token = token_data.token
+        existing_token.device_info = token_data.device_info
+        token = existing_token
+    else:
+        # Create a new token
+        token = SessionToken(
+            session_id=session_id,
+            token=token_data.token,
+            device_info=token_data.device_info
+        )
+        db.add(token)
+    
+    db.commit()
+    db.refresh(token)
+    
+    return {
+        "token_id": token.id,
+        "session_id": token.session_id,
+        "created_at": token.created_at.isoformat(),
+        "expires_at": token.expires_at.isoformat()
+    }
+
+@router.post("/sessions/{session_id}/verify-token")
+def verify_session_token(
+    session_id: int,
+    token_data: TokenRequest,
+    db: Session = Depends(get_db)
+) -> Dict[str, bool]:
+    """Verify if a token is valid for a specific interview session."""
+    # Check if session exists
+    session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Interview session not found")
+    
+    # Look for the token in the database
+    token = db.query(SessionToken).filter(
+        SessionToken.session_id == session_id,
+        SessionToken.token == token_data.token
+    ).first()
+    
+    # Check if token exists and is valid
+    if token and token.is_valid():
+        return {"valid": True}
+    
+    return {"valid": False}

@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Enum, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 import enum
-from datetime import datetime
+from datetime import datetime, timedelta
 
 Base = declarative_base()
 
@@ -59,3 +59,26 @@ class CodeSubmissionModel(Base):
             "evaluation": self.evaluation,
             "submitted_at": self.submitted_at.isoformat()
         }
+
+class SessionToken(Base):
+    __tablename__ = "session_tokens"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey('interview_sessions.id'), nullable=False)
+    token = Column(String(128), nullable=False, index=True, unique=True)
+    device_info = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, default=lambda: datetime.utcnow() + timedelta(days=7))
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "session_id": self.session_id,
+            "token": self.token,
+            "device_info": self.device_info,
+            "created_at": self.created_at.isoformat(),
+            "expires_at": self.expires_at.isoformat()
+        }
+    
+    def is_valid(self):
+        return datetime.utcnow() < self.expires_at

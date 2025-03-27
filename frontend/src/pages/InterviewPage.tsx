@@ -11,7 +11,7 @@ import {
   Tabs,
   Tab,
 } from '@mui/material';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 // import InfoIcon from '@mui/icons-material/Info';
 import ReactMarkdown from 'react-markdown';
 
@@ -56,11 +56,14 @@ function TabPanel(props: TabPanelProps) {
 
 const InterviewPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
+  const navigate = useNavigate();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [code, setCode] = useState<string>('');
   const [language, setLanguage] = useState<string>('python');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isValidating, setIsValidating] = useState<boolean>(true);
+  const [isAccessDenied, setIsAccessDenied] = useState<boolean>(false);
   const [currentProblem, setCurrentProblem] = useState<string>('');
   const [currentEvaluation, setCurrentEvaluation] = useState<EvaluationResponse | null>(null);
   const [tabValue, setTabValue] = useState(0);
@@ -70,6 +73,35 @@ const InterviewPage: React.FC = () => {
   };
 
   useEffect(() => {
+    const validateSession = async () => {
+      if (!sessionId) {
+        navigate('/');
+        return;
+      }
+
+      setIsValidating(true);
+      
+      try {
+        // Check if the token is valid
+        const isValid = await interviewAPI.validateSessionToken(parseInt(sessionId));
+        
+        if (!isValid) {
+          console.error('Access denied: Invalid session token');
+          setIsAccessDenied(true);
+          setIsValidating(false);
+          return;
+        }
+        
+        // If valid, load the session
+        await loadSession();
+      } catch (error) {
+        console.error('Error validating session:', error);
+        setIsAccessDenied(true);
+      } finally {
+        setIsValidating(false);
+      }
+    };
+
     const loadSession = async () => {
       if (!sessionId) return;
 
@@ -98,11 +130,13 @@ const InterviewPage: React.FC = () => {
         setMessages(chatMessages);
       } catch (error) {
         console.error('Error loading session:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    loadSession();
-  }, [sessionId]);
+    validateSession();
+  }, [sessionId, navigate]);
 
   // Function to format evaluation results in a more readable way
   const formatEvaluation = (evaluation: EvaluationResponse) => {
@@ -476,6 +510,50 @@ const InterviewPage: React.FC = () => {
     }
   };
 
+  // Render loading state or access denied state
+  if (isValidating) {
+    return (
+      <Container maxWidth="xl" sx={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <Box textAlign="center">
+          <CircularProgress size={60} />
+          <Typography variant="h6" sx={{ mt: 2 }}>
+            Validating session...
+          </Typography>
+        </Box>
+      </Container>
+    );
+  }
+
+  if (isAccessDenied) {
+    return (
+      <Container maxWidth="sm" sx={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
+          <Typography variant="h5" color="error" gutterBottom>
+            Access Denied
+          </Typography>
+          <Typography variant="body1" paragraph>
+            You don't have permission to access this interview session. This may be because:
+          </Typography>
+          <Typography component="ul" sx={{ pl: 2 }}>
+            <li>You are trying to access from a different device or browser</li>
+            <li>The session token has expired</li>
+            <li>The session does not exist</li>
+          </Typography>
+          <Button 
+            variant="contained" 
+            color="primary" 
+            fullWidth 
+            onClick={() => navigate('/')} 
+            sx={{ mt: 2 }}
+          >
+            Return to Home
+          </Button>
+        </Paper>
+      </Container>
+    );
+  }
+
+  // Render the actual interview UI
   return (
     <Container maxWidth="xl" sx={{ height: '100vh', py: 3, position: 'relative' }}>
 

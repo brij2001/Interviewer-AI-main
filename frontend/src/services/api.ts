@@ -1,7 +1,8 @@
 import axios, { AxiosInstance } from 'axios';
+import CryptoJS from 'crypto-js';
 
 // Use the environment variable for the API URL
-const BASE_URL = process.env.REACT_APP_API_URL || 'https://interviewer-ai-710553458071.us-central1.run.app/api/v1'
+const BASE_URL = process.env.REACT_APP_API_URL || 'api.ai.im-brij.com/api/v1'
 
 
 interface InterviewSession {
@@ -54,6 +55,14 @@ export interface FinalEvaluationResponse {
   [key: string]: any;
 }
 
+// Interface for session token
+export interface SessionToken {
+  session_id: number;
+  token: string;
+  created_at: string;
+  expires_at: string;
+}
+
 class InterviewAPI {
   private api: AxiosInstance;
 
@@ -94,7 +103,60 @@ class InterviewAPI {
       role,
       difficulty,
     });
+    
+    // Generate and store the session token
+    await this.generateSessionToken(response.data.session_id);
+    
     return response.data;
+  }
+
+  // Generate a session token based on browser and device information
+  private async generateSessionToken(sessionId: number): Promise<void> {
+    // Get browser and device information
+    const userAgent = navigator.userAgent;
+    const platform = navigator.platform;
+    const language = navigator.language;
+    
+    // Create a unique fingerprint from browser data
+    const fingerprint = `${userAgent}|${platform}|${language}|${sessionId}|${Date.now()}`;
+    
+    // Generate SHA-256 hash
+    const token = CryptoJS.SHA256(fingerprint).toString(CryptoJS.enc.Hex);
+    
+    // Store the token
+    localStorage.setItem(`interview_token_${sessionId}`, token);
+    
+    // Send the token to backend for storage
+    await this.api.post(`/sessions/${sessionId}/token`, {
+      token,
+      device_info: {
+        user_agent: userAgent,
+        platform: platform,
+        language: language
+      }
+    });
+  }
+  
+  // Validate a session token
+  async validateSessionToken(sessionId: number): Promise<boolean> {
+    // Get the stored token
+    const storedToken = localStorage.getItem(`interview_token_${sessionId}`);
+    
+    if (!storedToken) {
+      return false;
+    }
+    
+    try {
+      // Verify token with backend
+      const response = await this.api.post(`/sessions/${sessionId}/verify-token`, {
+        token: storedToken
+      });
+      
+      return response.data.valid === true;
+    } catch (error) {
+      console.error('Token validation error:', error);
+      return false;
+    }
   }
 
   // Send candidate's response and get next interview action
