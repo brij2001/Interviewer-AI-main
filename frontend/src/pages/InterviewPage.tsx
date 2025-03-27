@@ -17,6 +17,7 @@ import ReactMarkdown from 'react-markdown';
 
 import CodeEditor from '../components/CodeEditor';
 import ChatInterface from '../components/ChatInterface';
+import APIStatusIcon from '../components/APIStatusIcon';
 import { interviewAPI } from '../services/api';
 import { EvaluationResponse, FinalEvaluationResponse } from '../services/api';
 
@@ -55,7 +56,7 @@ function TabPanel(props: TabPanelProps) {
 
 const InterviewPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
-  
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [code, setCode] = useState<string>('');
   const [language, setLanguage] = useState<string>('python');
@@ -71,14 +72,14 @@ const InterviewPage: React.FC = () => {
   useEffect(() => {
     const loadSession = async () => {
       if (!sessionId) return;
-      
+
       try {
         const session = await interviewAPI.getSession(parseInt(sessionId));
         // Initialize chat with existing interview notes
         const chatMessages: Message[] = session.interview_notes.map((note: any) => {
           let content = note.content;
           let sender: 'interviewer' | 'candidate' = 'interviewer';
-          
+
           // Check if it's a candidate message (which starts with "Candidate: ")
           if (note.content.startsWith('Candidate: ')) {
             content = note.content.substring('Candidate: '.length);
@@ -86,14 +87,14 @@ const InterviewPage: React.FC = () => {
           } else if (note.stage === 'candidate_response') {
             sender = 'candidate';
           }
-          
+
           return {
             sender,
             content,
             timestamp: new Date().toISOString(),
           };
         });
-        
+
         setMessages(chatMessages);
       } catch (error) {
         console.error('Error loading session:', error);
@@ -107,7 +108,7 @@ const InterviewPage: React.FC = () => {
   const formatEvaluation = (evaluation: EvaluationResponse) => {
     // For debugging
     console.log('Formatting evaluation:', evaluation);
-    
+
     // If we have no evaluation or empty evaluation object, show a message
     if (!evaluation || Object.keys(evaluation).length === 0) {
       return (
@@ -116,7 +117,7 @@ const InterviewPage: React.FC = () => {
         </Box>
       );
     }
-    
+
     return (
       <Box>
         {evaluation.correctness !== undefined && (
@@ -125,28 +126,28 @@ const InterviewPage: React.FC = () => {
             <Typography variant="body1">{evaluation.correctness}/10</Typography>
           </Box>
         )}
-        
+
         {evaluation.time_complexity && (
           <Box mb={2}>
             <Typography variant="subtitle1" fontWeight="bold">Time Complexity</Typography>
             <Typography variant="body1">{evaluation.time_complexity}</Typography>
           </Box>
         )}
-        
+
         {evaluation.space_complexity && (
           <Box mb={2}>
             <Typography variant="subtitle1" fontWeight="bold">Space Complexity</Typography>
             <Typography variant="body1">{evaluation.space_complexity}</Typography>
           </Box>
         )}
-        
+
         {evaluation.code_quality !== undefined && (
           <Box mb={2}>
             <Typography variant="subtitle1" fontWeight="bold">Code Quality</Typography>
             <Typography variant="body1">{evaluation.code_quality}/10</Typography>
           </Box>
         )}
-        
+
         {evaluation.suggestions && evaluation.suggestions.length > 0 && (
           <Box mb={2}>
             <Typography variant="subtitle1" fontWeight="bold">Suggestions</Typography>
@@ -159,7 +160,7 @@ const InterviewPage: React.FC = () => {
             </ul>
           </Box>
         )}
-        
+
         {/* Always display feedback section, with fallback for missing feedback */}
         <Box>
           <Typography variant="subtitle1" fontWeight="bold">Detailed Feedback</Typography>
@@ -187,7 +188,7 @@ const InterviewPage: React.FC = () => {
       "solution is complete",
       "i finished"
     ];
-    
+
     const lowerCaseMessage = message.toLowerCase();
     return completionPhrases.some(phrase => lowerCaseMessage.includes(phrase));
   };
@@ -197,15 +198,15 @@ const InterviewPage: React.FC = () => {
     // Look for key markers that indicate the problem statement
     const problemMarker = "Problem:";
     const problemIndex = fullMessage.indexOf(problemMarker);
-    
+
     if (problemIndex === -1) {
       // If we don't find "Problem:", return the whole message
       return fullMessage;
     }
-    
+
     // Extract from "Problem:" to the end (or to the next major section)
     let endIndex = fullMessage.length;
-    
+
     // Look for possible end markers like "Example Input:" or "Constraints:"
     const possibleEndMarkers = ["Note:", "Good luck"];
     for (const marker of possibleEndMarkers) {
@@ -214,10 +215,10 @@ const InterviewPage: React.FC = () => {
         endIndex = markerIndex;
       }
     }
-    
+
     // Get the problem statement and add any examples/constraints that follow
     let problemStatement = fullMessage.substring(problemIndex);
-    
+
     // Format the result with appropriate spacing and line breaks
     return problemStatement.trim();
   };
@@ -284,7 +285,7 @@ const InterviewPage: React.FC = () => {
     try {
       // Ensure we have a problem statement to submit
       const problemToSubmit = currentProblem || "Code evaluation request";
-      
+
       const result = await interviewAPI.evaluateCode(
         parseInt(sessionId),
         code,
@@ -303,10 +304,10 @@ const InterviewPage: React.FC = () => {
       // Process the evaluation result
       let evaluationResponse: EvaluationResponse = { feedback: "" };
       let evaluationContent = "Your code has been evaluated. Check the Evaluation tab below to see the results.";
-      
+
       // Log the raw evaluation for debugging
       console.log('Raw evaluation result:', result.evaluation);
-      
+
       try {
         if (typeof result.evaluation === 'string') {
           // Try to parse the string as JSON first
@@ -314,12 +315,12 @@ const InterviewPage: React.FC = () => {
             // Sometimes the string might have extra content before or after the JSON
             // Try to extract just the JSON part using regex
             const jsonMatch = result.evaluation.match(/\{[\s\S]*\}/);
-            
+
             if (jsonMatch) {
               const jsonStr = jsonMatch[0];
               const parsedEvaluation = JSON.parse(jsonStr);
               evaluationResponse = parsedEvaluation;
-              
+
               // Extract a summary for the chat interface
               if (parsedEvaluation.feedback) {
                 // Get the first few sentences of the feedback for the chat message
@@ -342,7 +343,7 @@ const InterviewPage: React.FC = () => {
           }
         } else if (result.evaluation && typeof result.evaluation === 'object') {
           evaluationResponse = result.evaluation as EvaluationResponse;
-          
+
           // Extract a summary for the chat interface
           if (evaluationResponse.feedback) {
             // Get the first few sentences of the feedback for the chat message
@@ -361,15 +362,15 @@ const InterviewPage: React.FC = () => {
         evaluationContent = "The code was submitted successfully, but there was an issue with the evaluation response.";
         evaluationResponse = { feedback: evaluationContent };
       }
-      
+
       // Make sure evaluation response is not null or undefined
       if (!evaluationResponse) {
         evaluationResponse = { feedback: "Unable to process evaluation response." };
       }
-      
+
       // Set the current evaluation for the tab panel
       setCurrentEvaluation(evaluationResponse);
-      
+
       // Add simplified evaluation message to chat
       const evaluationMessage: Message = {
         sender: 'interviewer',
@@ -377,12 +378,12 @@ const InterviewPage: React.FC = () => {
         timestamp: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, evaluationMessage]);
-      
+
       // Switch to the Evaluation tab
       setTabValue(1);
     } catch (error) {
       console.error('Error evaluating code:', error);
-      
+
       // Add error message to chat
       const errorMessage: Message = {
         sender: 'interviewer',
@@ -393,7 +394,7 @@ const InterviewPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-    
+
     return true;
   };
 
@@ -403,14 +404,14 @@ const InterviewPage: React.FC = () => {
     setIsLoading(true);
     try {
       const result = await interviewAPI.getFinalEvaluation(parseInt(sessionId));
-      
+
       // Log the raw evaluation data for debugging
       console.log('Final evaluation result:', result.evaluation);
-      
+
       // Process the evaluation data
       let evaluationContent = '';
       let evaluationData: EvaluationResponse = { feedback: '' };
-      
+
       // Process the evaluation result
       if (typeof result.evaluation === 'string') {
         // Try to parse the string as JSON if it is one
@@ -439,13 +440,13 @@ const InterviewPage: React.FC = () => {
           ...evalObj,
           feedback: evalObj.detailed_feedback || ''
         };
-        evaluationContent = evalObj.detailed_feedback || 
+        evaluationContent = evalObj.detailed_feedback ||
           "Thank you for completing the interview. Please check the Evaluation tab for your assessment.";
       } else {
         evaluationContent = "Thank you for completing the interview. The evaluation could not be processed.";
         evaluationData = { feedback: evaluationContent };
       }
-      
+
       // Add final evaluation message to chat
       const evaluationMessage: Message = {
         sender: 'interviewer',
@@ -453,16 +454,16 @@ const InterviewPage: React.FC = () => {
         timestamp: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, evaluationMessage]);
-      
+
       // Set the current evaluation for the tab panel
       setCurrentEvaluation(evaluationData);
-      
+
       // Switch to the Evaluation tab
       setTabValue(1);
-      
+
     } catch (error) {
       console.error('Error getting final evaluation:', error);
-      
+
       // Add error message to chat
       const errorMessage: Message = {
         sender: 'interviewer',
@@ -476,13 +477,15 @@ const InterviewPage: React.FC = () => {
   };
 
   return (
-    <Container maxWidth="xl" sx={{ height: '100vh', py: 3 }}>
+    <Container maxWidth="xl" sx={{ height: '100vh', py: 3, position: 'relative' }}>
+
       <Grid container spacing={2} sx={{ height: '100%' }}>
         {/* Chat Section */}
         <Grid item xs={12} md={6} sx={{ height: '100%' }}>
           <Paper sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
               <Typography variant="h6">Interview Chat</Typography>
+              <APIStatusIcon />
             </Box>
             <ChatInterface
               messages={messages}
@@ -526,7 +529,7 @@ const InterviewPage: React.FC = () => {
               >
                 Submit Code
               </Button>
-              
+
               <Button
                 variant="outlined"
                 color="secondary"
@@ -537,7 +540,7 @@ const InterviewPage: React.FC = () => {
               </Button>
             </Box>
           </Paper>
-          
+
           {/* Problem/Evaluation Tabs */}
           <Paper sx={{ flexGrow: 0, height: '30%', display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>

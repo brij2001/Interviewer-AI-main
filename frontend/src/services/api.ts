@@ -66,6 +66,23 @@ class InterviewAPI {
     });
   }
 
+  // Check API health
+  async checkHealth(): Promise<boolean> {
+    try {
+      // Try the health endpoint first
+      await axios.get(`${BASE_URL}/health`, { timeout: 5000 });
+      return true;
+    } catch (error) {
+      // If the health endpoint doesn't exist, try the interviews endpoint
+      try {
+        await axios.get(`${BASE_URL}/interviews`, { timeout: 5000 });
+        return true;
+      } catch (error) {
+        return false;
+      }
+    }
+  }
+
   // Create a new interview session
   async createSession(
     candidateName: string,

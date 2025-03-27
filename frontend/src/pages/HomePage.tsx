@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { interviewAPI } from '../services/api';
+import APIStatusIcon from '../components/APIStatusIcon';
 
 const DIFFICULTY_LEVELS = [
   { value: 'easy', label: 'Easy' },
@@ -58,7 +59,10 @@ const HomePage: React.FC = () => {
   };
 
   return (
-    <Container maxWidth="sm" sx={{ py: 8 }}>
+    <Container maxWidth="sm" sx={{ py: 8, position: 'relative' }}>
+      <Box sx={{ position: 'absolute', top: 16, right: -24 }}>
+        <APIStatusIcon />
+      </Box>
       <Paper
         elevation={3}
         sx={{
