@@ -2,7 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import CryptoJS from 'crypto-js';
 
 // Use the environment variable for the API URL
-const BASE_URL = process.env.REACT_APP_API_URL || 'api.ai.im-brij.com/api/v1'
+const BASE_URL = process.env.REACT_APP_API_URL || 'https://api.ai.im-brij.com/api/v1'
 
 
 interface InterviewSession {
