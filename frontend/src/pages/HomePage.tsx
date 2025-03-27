@@ -132,7 +132,7 @@ const HomePage: React.FC = () => {
           {/* Coming soon: Resume Upload */}
           {/* add a coming soon section */}
           <Box sx={{ mt: 2 }}>
-            <Typography variant="h6" component="h2" gutterBottom>
+            <Typography color="gray" variant="h6" component="h2" gutterBottom>
               Coming Soon: resume upload
             </Typography>
           </Box>
