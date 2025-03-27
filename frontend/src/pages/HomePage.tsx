@@ -129,6 +129,14 @@ const HomePage: React.FC = () => {
             </Select>
           </FormControl>
 
+          {/* Coming soon: Resume Upload */}
+          {/* add a coming soon section */}
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="h6" component="h2" gutterBottom>
+              Coming Soon: resume upload
+            </Typography>
+          </Box>
+
           <Button
             type="submit"
             variant="contained"
