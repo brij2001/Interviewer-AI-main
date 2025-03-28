@@ -73,11 +73,11 @@ const HomePage: React.FC = () => {
         }}
       >
         <Typography variant="h4" component="h1" gutterBottom align="center">
-          AI Coding Interview Platform
+          AI Interview Platform
         </Typography>
 
         <Typography variant="body1" color="text.secondary" align="center">
-          Practice coding interviews with our AI interviewer. Get real-time feedback
+          Practice technical interviews with our AI interviewer. Get real-time feedback
           and improve your skills.
         </Typography>
 
