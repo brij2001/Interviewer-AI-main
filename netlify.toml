@@ -1,6 +1,6 @@
 [build]
   base = "frontend"
-  publish = "build"
+  publish = "/build"
   ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- ./"
 
 [[redirects]]
