@@ -2,7 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import CryptoJS from 'crypto-js';
 
 // Use the environment variable for the API URL
-const BASE_URL = process.env.REACT_APP_API_URL || 'https://api.ai.im-brij.com/api/v1'
+const BASE_URL = process.env.REACT_APP_API_URL || 'https://interviewer-ai-main-710553458071.us-east1.run.app/api/v1'
 
 
 interface InterviewSession {
@@ -65,6 +65,9 @@ export interface SessionToken {
 
 class InterviewAPI {
   private api: AxiosInstance;
+  private lastActivityTime: number;
+  private readonly SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
+  private isSessionActive: boolean;
 
   constructor() {
     this.api = axios.create({
@@ -73,23 +76,57 @@ class InterviewAPI {
         'Content-Type': 'application/json',
       },
     });
+    this.lastActivityTime = Date.now();
+    this.isSessionActive = true;
+    this.setupActivityListeners();
+  }
+
+  private setupActivityListeners() {
+    // Update last activity time on user interaction
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+    events.forEach(event => {
+      window.addEventListener(event, () => this.updateLastActivity());
+    });
+  }
+
+  private updateLastActivity() {
+    this.lastActivityTime = Date.now();
+    this.isSessionActive = true;
+  }
+
+  private checkSessionTimeout() {
+    const currentTime = Date.now();
+    const timeSinceLastActivity = currentTime - this.lastActivityTime;
+    
+    if (timeSinceLastActivity >= this.SESSION_TIMEOUT) {
+      this.isSessionActive = false;
+      return true;
+    }
+    return false;
+  }
+
+  private async handleApiCall<T>(apiCall: () => Promise<T>): Promise<T> {
+    if (this.checkSessionTimeout()) {
+      throw new Error('Session has expired due to inactivity. Please refresh the page to continue.');
+    }
+    return apiCall();
   }
 
   // Check API health
   async checkHealth(): Promise<boolean> {
-    try {
-      // Try the health endpoint first
-      await axios.get(`${BASE_URL}/health`, { timeout: 5000 });
-      return true;
-    } catch (error) {
-      // If the health endpoint doesn't exist, try the interviews endpoint
+    return this.handleApiCall(async () => {
       try {
-        await axios.get(`${BASE_URL}/interviews`, { timeout: 5000 });
+        await axios.get(`${BASE_URL}/health`, { timeout: 5000 });
         return true;
       } catch (error) {
-        return false;
+        try {
+          await axios.get(`${BASE_URL}/interviews`, { timeout: 5000 });
+          return true;
+        } catch (error) {
+          return false;
+        }
       }
-    }
+    });
   }
 
   // Create a new interview session
@@ -98,16 +135,17 @@ class InterviewAPI {
     role: string,
     difficulty: string = 'medium'
   ): Promise<{ session_id: number; response: string; stage: string }> {
-    const response = await this.api.post('/sessions', {
-      candidate_name: candidateName,
-      role,
-      difficulty,
+    return this.handleApiCall(async () => {
+      const response = await this.api.post('/sessions', {
+        candidate_name: candidateName,
+        role,
+        difficulty,
+      });
+      
+      await this.generateSessionToken(response.data.session_id);
+      
+      return response.data;
     });
-    
-    // Generate and store the session token
-    await this.generateSessionToken(response.data.session_id);
-    
-    return response.data;
   }
 
   // Generate a session token based on browser and device information
@@ -164,10 +202,12 @@ class InterviewAPI {
     sessionId: number,
     response: string
   ): Promise<{ response: string; stage: string }> {
-    const apiResponse = await this.api.post(`/sessions/${sessionId}/respond`, {
-      response,
+    return this.handleApiCall(async () => {
+      const apiResponse = await this.api.post(`/sessions/${sessionId}/respond`, {
+        response,
+      });
+      return apiResponse.data;
     });
-    return apiResponse.data;
   }
 
   // Submit code for evaluation
@@ -177,12 +217,14 @@ class InterviewAPI {
     language: string,
     problemStatement: string
   ): Promise<{ evaluation: string | EvaluationResponse; submission_id: number }> {
-    const response = await this.api.post(`/sessions/${sessionId}/code`, {
-      code,
-      language,
-      problem_statement: problemStatement,
+    return this.handleApiCall(async () => {
+      const response = await this.api.post(`/sessions/${sessionId}/code`, {
+        code,
+        language,
+        problem_statement: problemStatement,
+      });
+      return response.data;
     });
-    return response.data;
   }
 
   // Evaluate code from the IDE
@@ -192,32 +234,40 @@ class InterviewAPI {
     language: string,
     problemStatement: string
   ): Promise<{ evaluation: string | EvaluationResponse; submission_id: number }> {
-    const response = await this.api.post(`/sessions/${sessionId}/evaluate-code`, {
-      code,
-      language,
-      problem_statement: problemStatement,
+    return this.handleApiCall(async () => {
+      const response = await this.api.post(`/sessions/${sessionId}/evaluate-code`, {
+        code,
+        language,
+        problem_statement: problemStatement,
+      });
+      return response.data;
     });
-    return response.data;
   }
 
   // Get final evaluation
   async getFinalEvaluation(
     sessionId: number
   ): Promise<{ evaluation: string | FinalEvaluationResponse; session: InterviewSession }> {
-    const response = await this.api.get(`/sessions/${sessionId}/final-evaluation`);
-    return response.data;
+    return this.handleApiCall(async () => {
+      const response = await this.api.get(`/sessions/${sessionId}/final-evaluation`);
+      return response.data;
+    });
   }
 
   // Get session details
   async getSession(sessionId: number): Promise<InterviewSession> {
-    const response = await this.api.get(`/sessions/${sessionId}`);
-    return response.data;
+    return this.handleApiCall(async () => {
+      const response = await this.api.get(`/sessions/${sessionId}`);
+      return response.data;
+    });
   }
 
   // List all sessions
   async listSessions(): Promise<InterviewSession[]> {
-    const response = await this.api.get('/sessions');
-    return response.data;
+    return this.handleApiCall(async () => {
+      const response = await this.api.get('/sessions');
+      return response.data;
+    });
   }
 }
 

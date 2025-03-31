@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Container,
   Grid,
@@ -10,6 +10,7 @@ import {
   Tooltip,
   Tabs,
   Tab,
+  Alert,
 } from '@mui/material';
 import { useParams, useNavigate } from 'react-router-dom';
 // import InfoIcon from '@mui/icons-material/Info';
@@ -67,6 +68,9 @@ const InterviewPage: React.FC = () => {
   const [currentProblem, setCurrentProblem] = useState<string>('');
   const [currentEvaluation, setCurrentEvaluation] = useState<EvaluationResponse | null>(null);
   const [tabValue, setTabValue] = useState(0);
+  const [sessionTimeout, setSessionTimeout] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -137,6 +141,14 @@ const InterviewPage: React.FC = () => {
 
     validateSession();
   }, [sessionId, navigate]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   // Function to format evaluation results in a more readable way
   const formatEvaluation = (evaluation: EvaluationResponse) => {
@@ -288,13 +300,17 @@ const InterviewPage: React.FC = () => {
       setMessages((prev) => [...prev, interviewerMessage]);
 
       // Update problem statement if in coding stage
-      if (response.stage === 'coding_problem' && response.response.includes('Problem:')) {
+      if (response.stage === 'coding' && response.response.includes('Problem:')) {
         setCurrentProblem(extractProblemStatement(response.response));
-        // Switch to Problem tab when a new problem is received
         setTabValue(0);
       }
-    } catch (error) {
-      console.error('Error sending message:', error);
+    } catch (error: any) {
+      if (error.message.includes('Session has expired')) {
+        setSessionTimeout(true);
+        setErrorMessage('Your session has expired due to inactivity. Please refresh the page to continue.');
+      } else {
+        setErrorMessage('Failed to send message. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -556,7 +572,23 @@ const InterviewPage: React.FC = () => {
   // Render the actual interview UI
   return (
     <Container maxWidth="xl" sx={{ height: '100vh', py: 3, position: 'relative' }}>
-
+      {sessionTimeout && (
+        <Alert 
+          severity="error" 
+          sx={{ 
+            position: 'fixed', 
+            top: 16, 
+            left: '50%', 
+            transform: 'translateX(-50%)', 
+            zIndex: 1000,
+            width: '80%',
+            maxWidth: '600px'
+          }}
+        >
+          {errorMessage}
+        </Alert>
+      )}
+      
       <Grid container spacing={2} sx={{ height: '100%' }}>
         {/* Chat Section */}
         <Grid item xs={12} md={6} sx={{ height: '100%' }}>
@@ -569,6 +601,7 @@ const InterviewPage: React.FC = () => {
               messages={messages}
               onSendMessage={handleSendMessage}
               isLoading={isLoading}
+              disabled={sessionTimeout}
             />
           </Paper>
         </Grid>

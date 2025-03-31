@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from .core.config import settings
 from .core.database import init_db
 from .routers import interview
+from .middleware import SecurityMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,13 +21,21 @@ app = FastAPI(
 )
 
 # Configure CORS
+allowed_origins = ["https://interviewer.im-brij.com"]
+# Add localhost for development environments
+if settings.ENVIRONMENT.lower() in ["development", "dev", "local"]:
+    allowed_origins.extend(["http://localhost:3000", "http://127.0.0.1:3000"])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS else ["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
+
+# Add security middleware
+app.add_middleware(SecurityMiddleware)
 
 # Include routers
 app.include_router(

@@ -20,12 +20,14 @@ interface ChatInterfaceProps {
   messages: Message[];
   onSendMessage: (message: string) => Promise<void>;
   isLoading?: boolean;
+  disabled?: boolean;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   messages,
   onSendMessage,
   isLoading = false,
+  disabled = false,
 }) => {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -103,7 +105,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           placeholder="Type your response..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          disabled={isLoading}
+          disabled={isLoading || disabled}
           multiline
           maxRows={4}
           size="small"
@@ -111,7 +113,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         <IconButton
           color="primary"
           type="submit"
-          disabled={isLoading || !input.trim()}
+          disabled={isLoading || disabled || !input.trim()}
           sx={{ alignSelf: 'flex-end' }}
         >
           {isLoading ? <CircularProgress size={24} /> : <SendIcon />}
