@@ -14,4 +14,4 @@ ENV PYTHONUNBUFFERED=1
 ENV CORS_ORIGINS=https://interviewer.im-brij.com
 
 # Command to run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "${PORT}"]
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
