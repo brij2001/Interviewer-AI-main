@@ -20,8 +20,8 @@ ENV VECTORSTORE_PATH=/tmp/chroma_db
 ENV ENVIRONMENT=production
 
 # Interview Settings
-MAX_INTERVIEW_DURATION=3600
-DEFAULT_INTERVIEW_DIFFICULTY=medium 
+ENV MAX_INTERVIEW_DURATION=3600
+ENV DEFAULT_INTERVIEW_DIFFICULTY=medium 
 
 # Command to run the application
 CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
