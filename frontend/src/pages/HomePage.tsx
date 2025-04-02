@@ -62,6 +62,9 @@ const HomePage: React.FC = () => {
     <Container maxWidth="sm" sx={{ py: 8, position: 'relative' }}>
       <Box sx={{ position: 'absolute', top: 16, right: -24 }}>
         <APIStatusIcon />
+        <Box sx={{ position: 'absolute', top: 20, right: -150, bgcolor: 'background.paper', p:0.2, borderRadius: 1, boxShadow: 3 }}>
+          GCP instance may take some time to boot from cold start. Please wait until green.
+        </Box>
       </Box>
       <Paper
         elevation={3}
