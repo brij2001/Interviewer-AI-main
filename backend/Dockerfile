@@ -13,7 +13,7 @@ ENV HOST=0.0.0.0
 ENV PYTHONUNBUFFERED=1
 ENV CORS_ORIGINS=https://interviewer.im-brij.com
 ENV MODEL_ENDPOINT=https://chatapi.akash.network/api/v1
-ENV MODEL_NAME=Meta-Llama-3-1-405B-Instruct-FP8
+ENV MODEL_NAME=Meta-Llama-4-Maverick-17B-128E-Instruct-FP8
 
 # Vector Store Configuration
 ENV VECTORSTORE_PATH=/tmp/chroma_db
