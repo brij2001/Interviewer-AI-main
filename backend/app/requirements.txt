@@ -3,7 +3,7 @@ uvicorn==0.25.0
 langchain==0.1.0
 openai==1.60.1
 python-dotenv==1.0.0
-pydantic==2.5.2
+pydantic==2.7.1
 chromadb==0.4.15
 python-multipart==0.0.6
 sqlalchemy==2.0.25
