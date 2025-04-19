@@ -170,7 +170,7 @@ const APISettingsDialog: React.FC<ApiSettingsDialogProps> = ({ open, onClose }) 
           {!isLoadingSettings && currentSettings && (
             <Box sx={{ mb: 3, bgcolor: 'background.paper', p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
               <Typography variant="subtitle2" gutterBottom>
-                Current Settings:
+                Current Settings:{currentSettings.isCustom? ' (Custom)' : ' SmartTechPrep Backend'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 <strong>Endpoint:</strong> {currentSettings.settings.endpoint}
@@ -185,7 +185,7 @@ const APISettingsDialog: React.FC<ApiSettingsDialogProps> = ({ open, onClose }) 
           )}
           
           <TextField
-            label="API Endpoint URL"
+            label="API Endpoint baseURL"
             placeholder="https://api.openai.com/v1"
             fullWidth
             value={endpointUrl}
