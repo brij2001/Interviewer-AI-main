@@ -144,20 +144,30 @@ const APISettingsDialog: React.FC<ApiSettingsDialogProps> = ({ open, onClose }) 
             Configure custom API endpoint URL, API key, and model name. These settings will be saved in your browser.
             Leave fields empty to use the default values from environment variables.
           </Typography>
-          
+
+          {/* Show loading indicator while fetching current settings */}
+          {isLoadingSettings && (
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <CircularProgress size={20} sx={{ mr: 1 }} />
+              <Typography variant="body2" color="text.secondary">
+                Loading current settings...
+              </Typography>
+            </Box>
+          )}
+
           {saveSuccess && (
             <Alert severity="success" sx={{ mb: 2 }}>
               Settings saved successfully!
             </Alert>
           )}
-          
+
           {saveError && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {saveError}
             </Alert>
           )}
-          
-          {currentSettings && (
+
+          {!isLoadingSettings && currentSettings && (
             <Box sx={{ mb: 3, bgcolor: 'background.paper', p: 2, borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
               <Typography variant="subtitle2" gutterBottom>
                 Current Settings:
@@ -182,9 +192,9 @@ const APISettingsDialog: React.FC<ApiSettingsDialogProps> = ({ open, onClose }) 
             onChange={(e) => setEndpointUrl(e.target.value)}
             margin="normal"
             helperText="Leave empty to use the default endpoint from environment"
-            disabled={isValidating}
+            disabled={isValidating || isLoadingSettings}
           />
-          
+
           <TextField
             label="API Key"
             fullWidth
@@ -193,9 +203,9 @@ const APISettingsDialog: React.FC<ApiSettingsDialogProps> = ({ open, onClose }) 
             margin="normal"
             type="password"
             helperText="Leave empty to use the default API key from environment"
-            disabled={isValidating}
+            disabled={isValidating || isLoadingSettings}
           />
-          
+
           <TextField
             label="Model Name"
             placeholder="gpt-4"
@@ -204,26 +214,26 @@ const APISettingsDialog: React.FC<ApiSettingsDialogProps> = ({ open, onClose }) 
             onChange={(e) => setModelName(e.target.value)}
             margin="normal"
             helperText="Leave empty to use the default model from environment"
-            disabled={isValidating}
+            disabled={isValidating || isLoadingSettings}
           />
 
           <Divider sx={{ my: 2 }} />
-          
+
           <Typography variant="body2" color="text.secondary">
             When fields are left empty, the system will use the default settings from the server's environment variables.
           </Typography>
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleReset} color="inherit" disabled={isValidating}>
+        <Button onClick={handleReset} color="inherit" disabled={isValidating || isLoadingSettings}>
           Reset
         </Button>
-        <Button onClick={onClose} disabled={isValidating}>Cancel</Button>
+        <Button onClick={onClose} disabled={isValidating || isLoadingSettings}>Cancel</Button>
         <Button 
           onClick={handleSave} 
           variant="contained" 
           color="primary"
-          disabled={isValidating}
+          disabled={isValidating || isLoadingSettings}
           startIcon={isValidating ? <CircularProgress size={16} /> : null}
         >
           {isValidating ? 'Validating...' : 'Save'}
@@ -233,4 +243,4 @@ const APISettingsDialog: React.FC<ApiSettingsDialogProps> = ({ open, onClose }) 
   );
 };
 
-export default APISettingsDialog; 
+export default APISettingsDialog;

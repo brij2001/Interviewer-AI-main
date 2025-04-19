@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Tooltip, Typography, keyframes, IconButton, Badge, Chip } from '@mui/material';
+import { Box, Tooltip, Typography, keyframes, IconButton, Badge} from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
-import SettingsApplicationsIcon from '@mui/icons-material/SettingsApplications';
-import BuildIcon from '@mui/icons-material/Build';
 import { interviewAPI } from '../services/api';
 import APISettingsDialog from './APISettingsDialog';
 
