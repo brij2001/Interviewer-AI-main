@@ -21,9 +21,9 @@ An interactive platform that uses AI to conduct coding interviews, providing rea
 ### Backend
 - Python with FastAPI
 - LangChain for AI interaction
-- SQLite database
+- Postgres Supabase for prod/ SQLite database for local dev
 - Chroma vector store
-- OpenAI GPT-4
+- OpenAI compatible endpoint(incl. Ollama on local dev)
 
 ### Frontend
 - React with TypeScript
