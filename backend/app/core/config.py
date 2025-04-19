@@ -12,9 +12,9 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "production"  # Default to production for cloud
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "*")  # Comma-separated list of origins
     # OpenAI settings
-    OPENAI_API_KEY: str
-    MODEL_ENDPOINT: str = "https://api.openai.com/v1"  # Default OpenAI endpoint
-    MODEL_NAME: str = "gpt-4"  # Default model
+    OPENAI_API_KEY: str  # Required to be set in environment variables, used as fallback for custom settings
+    MODEL_ENDPOINT: str = "https://api.openai.com/v1"  # Default OpenAI endpoint, used as fallback
+    MODEL_NAME: str = "gpt-4"  # Default model name, used as fallback
     
     # Azure OpenAI settings (optional)
     AZURE_API_VERSION: str | None = None

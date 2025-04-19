@@ -1,6 +1,11 @@
 import axios, { AxiosInstance } from 'axios';
 import CryptoJS from 'crypto-js';
 
+// Constants for local storage keys
+const API_ENDPOINT_KEY = 'api_endpoint_url';
+const API_KEY_KEY = 'api_key';
+const MODEL_NAME_KEY = 'model_name';
+
 // Use the environment variable for the API URL
 const BASE_URL = process.env.REACT_APP_API_URL || 'https://interviewer-ai-main-710553458071.us-east1.run.app/api/v1'
 
@@ -68,6 +73,7 @@ class InterviewAPI {
   private lastActivityTime: number;
   private readonly SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
   private isSessionActive: boolean;
+  private _settingsChanged: boolean;
 
   constructor() {
     this.api = axios.create({
@@ -78,6 +84,7 @@ class InterviewAPI {
     });
     this.lastActivityTime = Date.now();
     this.isSessionActive = true;
+    this._settingsChanged = false;
     this.setupActivityListeners();
   }
 
@@ -112,11 +119,40 @@ class InterviewAPI {
     return apiCall();
   }
 
+  // Get custom API settings from local storage
+  getCustomApiSettings(): { endpointUrl: string | null; apiKey: string | null; modelName: string | null } {
+    const endpointUrl = localStorage.getItem(API_ENDPOINT_KEY);
+    const apiKey = localStorage.getItem(API_KEY_KEY);
+    const modelName = localStorage.getItem(MODEL_NAME_KEY);
+    
+    // Only return non-empty strings
+    return { 
+      endpointUrl: endpointUrl && endpointUrl.trim() ? endpointUrl : null, 
+      apiKey: apiKey && apiKey.trim() ? apiKey : null,
+      modelName: modelName && modelName.trim() ? modelName : null
+    };
+  }
+
+  // Called when API settings have been changed
+  onSettingsChanged(): void {
+    // On settings change, we'll make sure the backend reinitializes the client
+    // on the next API call by setting a flag
+    this._settingsChanged = true;
+    
+    // Validate the new settings
+    this.checkHealth();
+  }
+
   // Check API health
   async checkHealth(): Promise<boolean> {
     return this.handleApiCall(async () => {
       try {
-        await axios.get(`${BASE_URL}/health`, { timeout: 5000 });
+        const { endpointUrl } = this.getCustomApiSettings();
+        const healthCheckUrl = endpointUrl ? 
+          `${BASE_URL}/health?custom_endpoint=${encodeURIComponent(endpointUrl)}` :
+          `${BASE_URL}/health`;
+        
+        await axios.get(healthCheckUrl, { timeout: 5000 });
         return true;
       } catch (error) {
         try {
@@ -136,10 +172,20 @@ class InterviewAPI {
     difficulty: string = 'medium'
   ): Promise<{ session_id: number; response: string; stage: string }> {
     return this.handleApiCall(async () => {
+      const { endpointUrl, apiKey, modelName } = this.getCustomApiSettings();
+      const forceReinitialize = this._settingsChanged;
+      
+      // Reset the flag
+      this._settingsChanged = false;
+      
       const response = await this.api.post('/sessions', {
         candidate_name: candidateName,
         role,
         difficulty,
+        custom_endpoint: endpointUrl,
+        custom_api_key: apiKey,
+        custom_model_name: modelName,
+        force_reinitialize: forceReinitialize
       });
       
       await this.generateSessionToken(response.data.session_id);
@@ -203,8 +249,18 @@ class InterviewAPI {
     response: string
   ): Promise<{ response: string; stage: string }> {
     return this.handleApiCall(async () => {
+      const { endpointUrl, apiKey, modelName } = this.getCustomApiSettings();
+      const forceReinitialize = this._settingsChanged;
+      
+      // Reset the flag
+      this._settingsChanged = false;
+      
       const apiResponse = await this.api.post(`/sessions/${sessionId}/respond`, {
         response,
+        custom_endpoint: endpointUrl,
+        custom_api_key: apiKey,
+        custom_model_name: modelName,
+        force_reinitialize: forceReinitialize
       });
       return apiResponse.data;
     });
@@ -218,10 +274,20 @@ class InterviewAPI {
     problemStatement: string
   ): Promise<{ evaluation: string | EvaluationResponse; submission_id: number }> {
     return this.handleApiCall(async () => {
+      const { endpointUrl, apiKey, modelName } = this.getCustomApiSettings();
+      const forceReinitialize = this._settingsChanged;
+      
+      // Reset the flag
+      this._settingsChanged = false;
+      
       const response = await this.api.post(`/sessions/${sessionId}/code`, {
         code,
         language,
         problem_statement: problemStatement,
+        custom_endpoint: endpointUrl,
+        custom_api_key: apiKey,
+        custom_model_name: modelName,
+        force_reinitialize: forceReinitialize
       });
       return response.data;
     });
@@ -235,10 +301,20 @@ class InterviewAPI {
     problemStatement: string
   ): Promise<{ evaluation: string | EvaluationResponse; submission_id: number }> {
     return this.handleApiCall(async () => {
+      const { endpointUrl, apiKey, modelName } = this.getCustomApiSettings();
+      const forceReinitialize = this._settingsChanged;
+      
+      // Reset the flag
+      this._settingsChanged = false;
+      
       const response = await this.api.post(`/sessions/${sessionId}/evaluate-code`, {
         code,
         language,
         problem_statement: problemStatement,
+        custom_endpoint: endpointUrl,
+        custom_api_key: apiKey,
+        custom_model_name: modelName,
+        force_reinitialize: forceReinitialize
       });
       return response.data;
     });
@@ -249,7 +325,18 @@ class InterviewAPI {
     sessionId: number
   ): Promise<{ evaluation: string | FinalEvaluationResponse; session: InterviewSession }> {
     return this.handleApiCall(async () => {
-      const response = await this.api.get(`/sessions/${sessionId}/final-evaluation`);
+      const { endpointUrl, apiKey, modelName } = this.getCustomApiSettings();
+      const forceReinitialize = this._settingsChanged;
+      
+      // Reset the flag
+      this._settingsChanged = false;
+      
+      const response = await this.api.post(`/sessions/${sessionId}/final-evaluation`, {
+        custom_endpoint: endpointUrl,
+        custom_api_key: apiKey,
+        custom_model_name: modelName,
+        force_reinitialize: forceReinitialize
+      });
       return response.data;
     });
   }
@@ -268,6 +355,94 @@ class InterviewAPI {
       const response = await this.api.get('/sessions');
       return response.data;
     });
+  }
+
+  // Verify custom API settings
+  async verifyCustomApiSettings(
+    endpointUrl: string | null, 
+    apiKey: string | null,
+    modelName: string | null
+  ): Promise<{ valid: boolean; message: string; settings?: any }> {
+    return this.handleApiCall(async () => {
+      try {
+        const response = await axios.get(
+          `${BASE_URL}/health/check-custom-endpoint`, 
+          { 
+            params: {
+              custom_endpoint: endpointUrl,
+              custom_api_key: apiKey,
+              custom_model_name: modelName
+            },
+            timeout: 10000 
+          }
+        );
+        return response.data;
+      } catch (error) {
+        console.error('Error verifying custom API settings:', error);
+        return { 
+          valid: false, 
+          message: 'Failed to verify custom API settings. Please check your connection and try again.' 
+        };
+      }
+    });
+  }
+
+  // Get current API settings information
+  async getCurrentApiSettings(): Promise<{ 
+    isCustom: boolean; 
+    isMixed: boolean; 
+    settings: { 
+      endpoint: string; 
+      apiKey: string; 
+      model: string 
+    } 
+  }> {
+    const { endpointUrl, apiKey, modelName } = this.getCustomApiSettings();
+    const isCustomEndpoint = !!endpointUrl;
+    const isCustomApiKey = !!apiKey;
+    const isCustomModel = !!modelName;
+    
+    // Check if we're using custom settings
+    const isCustom = isCustomEndpoint || isCustomApiKey || isCustomModel;
+    
+    // Check if we're using a mix of custom and default settings
+    const isMixed = isCustom && (!isCustomEndpoint || !isCustomApiKey || !isCustomModel);
+    
+    try {
+      // Get information about current settings from backend
+      const result = await this.verifyCustomApiSettings(endpointUrl, apiKey, modelName);
+      
+      if (result.valid && result.settings) {
+        return {
+          isCustom,
+          isMixed,
+          settings: result.settings
+        };
+      }
+      
+      // Fallback if settings not returned
+      return {
+        isCustom,
+        isMixed,
+        settings: {
+          endpoint: endpointUrl ? `${endpointUrl} (custom)` : 'Using default from environment',
+          apiKey: apiKey ? 'Using custom API key' : 'Using default from environment',
+          model: modelName ? `${modelName} (custom)` : 'Using default from environment'
+        }
+      };
+    } catch (error) {
+      console.error('Error getting current API settings:', error);
+      // Fallback
+      return {
+        isCustom,
+        isMixed,
+        settings: {
+          endpoint: endpointUrl ? `${endpointUrl} (custom)` : 'Using default from environment',
+          apiKey: apiKey ? 'Using custom API key' : 'Using default from environment',
+          model: modelName ? `${modelName} (custom)` : 'Using default from environment'
+        }
+      };
+    }
   }
 }
 

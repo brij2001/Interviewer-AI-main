@@ -26,24 +26,97 @@ class InterviewSessionCreate(BaseModel):
     candidate_name: str
     role: RoleType
     difficulty: DifficultyLevel = DifficultyLevel.MEDIUM
+    custom_endpoint: Optional[str] = None
+    custom_api_key: Optional[str] = None
+    custom_model_name: Optional[str] = None
+    force_reinitialize: Optional[bool] = False
 
 router = APIRouter()
 class SessionManager:
     def __init__(self):
         self.coordinators = {}
+        self.last_activity = {}
     
     def get_coordinator(self, session_id):
         if session_id not in self.coordinators:
             self.coordinators[session_id] = CoordinatorAgent()
+        
+        # Update last activity timestamp for this session
+        self.last_activity[session_id] = datetime.now()
         return self.coordinators[session_id]
     
-    def create_coordinator(self):
-        return CoordinatorAgent()
+    def create_coordinator(self, custom_endpoint=None, custom_api_key=None, custom_model_name=None):
+        # Check if custom settings are empty strings and convert to None
+        custom_endpoint = custom_endpoint if custom_endpoint and custom_endpoint.strip() else None
+        custom_api_key = custom_api_key if custom_api_key and custom_api_key.strip() else None
+        custom_model_name = custom_model_name if custom_model_name and custom_model_name.strip() else None
+        
+        # Create a coordinator with custom settings if provided
+        return CoordinatorAgent(
+            custom_endpoint=custom_endpoint,
+            custom_api_key=custom_api_key,
+            custom_model_name=custom_model_name
+        )
+    
+    def reinitialize_coordinator(self, session_id, custom_endpoint=None, custom_api_key=None, custom_model_name=None):
+        """Create a new coordinator with fresh API client for the session"""
+        # Check if custom settings are empty strings and convert to None
+        custom_endpoint = custom_endpoint if custom_endpoint and custom_endpoint.strip() else None
+        custom_api_key = custom_api_key if custom_api_key and custom_api_key.strip() else None
+        custom_model_name = custom_model_name if custom_model_name and custom_model_name.strip() else None
+        
+        # Clean up existing coordinator if it exists
+        if session_id in self.coordinators:
+            # Get existing interview context to preserve it
+            existing_context = None
+            if hasattr(self.coordinators[session_id], 'interview_context'):
+                existing_context = self.coordinators[session_id].interview_context
+            
+            # Clean up existing coordinator
+            self.cleanup_session(session_id)
+        
+        # Create new coordinator with fresh client
+        self.coordinators[session_id] = self.create_coordinator(
+            custom_endpoint=custom_endpoint,
+            custom_api_key=custom_api_key,
+            custom_model_name=custom_model_name
+        )
+        
+        # Restore interview context if it existed
+        if existing_context:
+            self.coordinators[session_id].interview_context = existing_context
+        
+        # Update last activity
+        self.last_activity[session_id] = datetime.now()
+        
+        return self.coordinators[session_id]
     
     def cleanup_session(self, session_id):
         """Remove coordinator for a completed session to free up resources"""
         if session_id in self.coordinators:
+            # Clean up associated resources
+            if hasattr(self.coordinators[session_id], 'cleanup'):
+                self.coordinators[session_id].cleanup()
+            
             del self.coordinators[session_id]
+            
+        if session_id in self.last_activity:
+            del self.last_activity[session_id]
+    
+    def cleanup_inactive_sessions(self, max_idle_minutes=30):
+        """Clean up sessions that have been inactive for the specified time"""
+        current_time = datetime.now()
+        sessions_to_cleanup = []
+        
+        for session_id, last_time in self.last_activity.items():
+            idle_time = (current_time - last_time).total_seconds() / 60
+            if idle_time > max_idle_minutes:
+                sessions_to_cleanup.append(session_id)
+        
+        for session_id in sessions_to_cleanup:
+            self.cleanup_session(session_id)
+        
+        return len(sessions_to_cleanup)
 
 session_manager = SessionManager()
 
@@ -65,6 +138,12 @@ def create_interview_session(
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Create a new interview session."""
+    # Check if custom settings are empty strings and convert to None
+    custom_endpoint = session_data.custom_endpoint if session_data.custom_endpoint and session_data.custom_endpoint.strip() else None
+    custom_api_key = session_data.custom_api_key if session_data.custom_api_key and session_data.custom_api_key.strip() else None
+    custom_model_name = session_data.custom_model_name if session_data.custom_model_name and session_data.custom_model_name.strip() else None
+    
+    # Create a new session
     session = InterviewSession(
         candidate_name=session_data.candidate_name,
         role=session_data.role.value,
@@ -75,9 +154,14 @@ def create_interview_session(
     db.commit()
     db.refresh(session)
     
-    # Create a fresh coordinator for the new session
-    coordinator = session_manager.create_coordinator()
+    # Create a fresh coordinator for the new session with custom settings if provided
+    coordinator = session_manager.create_coordinator(
+        custom_endpoint=custom_endpoint,
+        custom_api_key=custom_api_key,
+        custom_model_name=custom_model_name
+    )
     session_manager.coordinators[session.id] = coordinator
+    session_manager.last_activity[session.id] = datetime.now()
     
     # Start the interview with introduction
     response = coordinator.start_interview(
@@ -98,6 +182,10 @@ def create_interview_session(
 
 class CandidateResponse(BaseModel):
     response: str
+    custom_endpoint: Optional[str] = None
+    custom_api_key: Optional[str] = None
+    custom_model_name: Optional[str] = None
+    force_reinitialize: Optional[bool] = False
 
 @router.post("/sessions/{session_id}/respond")
 def process_candidate_response(
@@ -110,8 +198,23 @@ def process_candidate_response(
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
     
-    # Get current stage from the interviewer agent
-    coordinator = session_manager.get_coordinator(session_id)
+    # Check if custom settings are empty strings and convert to None
+    custom_endpoint = response_data.custom_endpoint if response_data.custom_endpoint and response_data.custom_endpoint.strip() else None
+    custom_api_key = response_data.custom_api_key if response_data.custom_api_key and response_data.custom_api_key.strip() else None
+    custom_model_name = response_data.custom_model_name if response_data.custom_model_name and response_data.custom_model_name.strip() else None
+    
+    # Check if we need to reinitialize the coordinator with new settings
+    if custom_endpoint or custom_api_key or custom_model_name or response_data.force_reinitialize:
+        coordinator = session_manager.reinitialize_coordinator(
+            session_id,
+            custom_endpoint=custom_endpoint,
+            custom_api_key=custom_api_key,
+            custom_model_name=custom_model_name
+        )
+    else:
+        # Use existing coordinator
+        coordinator = session_manager.get_coordinator(session_id)
+    
     current_agent_stage = coordinator.interviewer.current_stage
     
     # Process response through the coordinator
@@ -141,6 +244,10 @@ class CodeSubmissionRequest(BaseModel):
     code: str
     language: ProgrammingLanguage
     problem_statement: str
+    custom_endpoint: Optional[str] = None
+    custom_api_key: Optional[str] = None
+    custom_model_name: Optional[str] = None
+    force_reinitialize: Optional[bool] = False
 
 @router.post("/sessions/{session_id}/code")
 def submit_code(
@@ -152,6 +259,23 @@ def submit_code(
     session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Interview session not found")
+    
+    # Check if custom settings are empty strings and convert to None
+    custom_endpoint = submission_data.custom_endpoint if submission_data.custom_endpoint and submission_data.custom_endpoint.strip() else None
+    custom_api_key = submission_data.custom_api_key if submission_data.custom_api_key and submission_data.custom_api_key.strip() else None
+    custom_model_name = submission_data.custom_model_name if submission_data.custom_model_name and submission_data.custom_model_name.strip() else None
+    
+    # Check if we need to reinitialize the coordinator with new settings
+    if custom_endpoint or custom_api_key or custom_model_name or submission_data.force_reinitialize:
+        coordinator = session_manager.reinitialize_coordinator(
+            session_id,
+            custom_endpoint=custom_endpoint,
+            custom_api_key=custom_api_key,
+            custom_model_name=custom_model_name
+        )
+    else:
+        # Use existing coordinator
+        coordinator = session_manager.get_coordinator(session_id)
     
     # Create code submission
     submission = CodeSubmissionModel(
@@ -165,7 +289,6 @@ def submit_code(
     db.commit()
     
     # Evaluate code using the coordinator
-    coordinator = session_manager.get_coordinator(session_id)
     evaluation = coordinator.evaluate_code(
         code=submission_data.code,
         problem_statement=submission_data.problem_statement,
@@ -223,23 +346,76 @@ def evaluate_code(
     submission_data: CodeSubmissionRequest,
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """Evaluate code from the IDE."""
-    return submit_code(session_id, submission_data, db)
+    """Evaluate code without storing it."""
+    # Check if custom settings are empty strings and convert to None
+    custom_endpoint = submission_data.custom_endpoint if submission_data.custom_endpoint and submission_data.custom_endpoint.strip() else None
+    custom_api_key = submission_data.custom_api_key if submission_data.custom_api_key and submission_data.custom_api_key.strip() else None
+    custom_model_name = submission_data.custom_model_name if submission_data.custom_model_name and submission_data.custom_model_name.strip() else None
+    
+    # Check if we need to reinitialize the coordinator with new settings
+    if custom_endpoint or custom_api_key or custom_model_name or submission_data.force_reinitialize:
+        coordinator = session_manager.reinitialize_coordinator(
+            session_id,
+            custom_endpoint=custom_endpoint,
+            custom_api_key=custom_api_key,
+            custom_model_name=custom_model_name
+        )
+    else:
+        # Use existing coordinator
+        coordinator = session_manager.get_coordinator(session_id)
+    
+    evaluation = coordinator.evaluate_code(
+        code=submission_data.code,
+        problem_statement=submission_data.problem_statement,
+        language=submission_data.language.value
+    )
+    
+    return {
+        "evaluation": evaluation
+    }
 
-@router.get("/sessions/{session_id}/final-evaluation")
+class FinalEvaluationRequest(BaseModel):
+    custom_endpoint: Optional[str] = None
+    custom_api_key: Optional[str] = None
+    custom_model_name: Optional[str] = None
+    force_reinitialize: Optional[bool] = False
+
+@router.post("/sessions/{session_id}/final-evaluation")
 def get_final_evaluation(
     session_id: int,
+    request_data: FinalEvaluationRequest = None,
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """Get final evaluation for the interview session."""
+    """Generate a final evaluation for the interview session."""
     try:
         # Get session
         session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
         if not session:
             raise HTTPException(status_code=404, detail="Interview session not found")
         
-        # Generate final evaluation using the coordinator
-        coordinator = session_manager.get_coordinator(session_id)
+        # Check custom settings if request_data is provided
+        custom_endpoint = None
+        custom_api_key = None
+        custom_model_name = None
+        
+        if request_data:
+            custom_endpoint = request_data.custom_endpoint if request_data.custom_endpoint and request_data.custom_endpoint.strip() else None
+            custom_api_key = request_data.custom_api_key if request_data.custom_api_key and request_data.custom_api_key.strip() else None
+            custom_model_name = request_data.custom_model_name if request_data.custom_model_name and request_data.custom_model_name.strip() else None
+        
+        # Check if we need to reinitialize the coordinator with new settings
+        if request_data and (custom_endpoint or custom_api_key or custom_model_name or request_data.force_reinitialize):
+            coordinator = session_manager.reinitialize_coordinator(
+                session_id,
+                custom_endpoint=custom_endpoint,
+                custom_api_key=custom_api_key,
+                custom_model_name=custom_model_name
+            )
+        else:
+            # Use existing coordinator
+            coordinator = session_manager.get_coordinator(session_id)
+        
+        # Generate final evaluation
         evaluation = coordinator.get_final_evaluation()
         
         # Update session

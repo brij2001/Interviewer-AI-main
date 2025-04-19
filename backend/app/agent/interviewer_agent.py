@@ -112,7 +112,10 @@ class InterviewerAgent(BaseAgent):
         
         return response
     
-    def handle_candidate_response(self, response: str) -> str:
+    def handle_candidate_response(
+        self, 
+        response: str
+    ) -> str:
         """
         Process the candidate's response and determine next action.
         This method delegates to the coordinator for complex processing.

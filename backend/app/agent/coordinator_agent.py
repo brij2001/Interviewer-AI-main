@@ -10,14 +10,32 @@ from .final_evaluator_agent import FinalEvaluatorAgent
 class CoordinatorAgent:
     """
     Agent responsible for coordinating the interview process.
-    Manages communication between specialized agents.
+    Manages communication between specialized agent.
     """
     
-    def __init__(self):
-        # Create shared memory for the interview session
-        self.interviewer = InterviewerAgent(coordinator=self)
-        self.code_evaluator = EvaluatorAgent()
-        self.final_evaluator = FinalEvaluatorAgent()
+    def __init__(self, custom_endpoint: Optional[str] = None, custom_api_key: Optional[str] = None, custom_model_name: Optional[str] = None):
+        # Create shared memory for the interview session with custom API settings if provided
+        self.interviewer = InterviewerAgent(
+            coordinator=self,
+            custom_endpoint=custom_endpoint,
+            custom_api_key=custom_api_key,
+            custom_model_name=custom_model_name
+        )
+        self.code_evaluator = EvaluatorAgent(
+            custom_endpoint=custom_endpoint,
+            custom_api_key=custom_api_key,
+            custom_model_name=custom_model_name
+        )
+        self.final_evaluator = FinalEvaluatorAgent(
+            custom_endpoint=custom_endpoint,
+            custom_api_key=custom_api_key,
+            custom_model_name=custom_model_name
+        )
+        
+        # Store custom API settings
+        self.custom_endpoint = custom_endpoint
+        self.custom_api_key = custom_api_key
+        self.custom_model_name = custom_model_name
         
         # Track interview session context
         self.interview_context = {
@@ -29,7 +47,12 @@ class CoordinatorAgent:
             "code_submissions": []
         }
     
-    def start_interview(self, candidate_name: str, role: str = "Software Engineer", difficulty: str = "medium") -> str:
+    def start_interview(
+        self, 
+        candidate_name: str, 
+        role: str = "Software Engineer", 
+        difficulty: str = "medium"
+    ) -> str:
         """Start a new interview session."""
         self.interview_context["candidate_name"] = candidate_name
         self.interview_context["role"] = role
@@ -37,6 +60,20 @@ class CoordinatorAgent:
         
         # Delegate to interviewer agent
         return self.interviewer.start_interview(candidate_name)
+    
+    def _update_api_settings(self, custom_endpoint: Optional[str] = None, custom_api_key: Optional[str] = None, custom_model_name: Optional[str] = None):
+        """Update API settings for all agents"""
+        # Only update if new settings are provided
+        if custom_endpoint or custom_api_key or custom_model_name:
+            # Store the new settings
+            self.custom_endpoint = custom_endpoint or self.custom_endpoint
+            self.custom_api_key = custom_api_key or self.custom_api_key
+            self.custom_model_name = custom_model_name or self.custom_model_name
+            
+            # Update each agent's settings
+            self.interviewer.update_llm_settings(self.custom_endpoint, self.custom_api_key, self.custom_model_name)
+            self.code_evaluator.update_llm_settings(self.custom_endpoint, self.custom_api_key, self.custom_model_name)
+            self.final_evaluator.update_llm_settings(self.custom_endpoint, self.custom_api_key, self.custom_model_name)
     
     def process_response(self, current_stage: InterviewStage, response: str, interview_notes: List[Dict]) -> str:
         """
@@ -87,7 +124,7 @@ class CoordinatorAgent:
                     self.interview_context["current_problem"] = problem_statement
                     
                 # Use code evaluator agent
-                evaluation = self.code_evaluator.evaluate_code(
+                evaluation = self.evaluate_code(
                     code=response,
                     problem_statement=self.interview_context.get("current_problem", ""),
                     language=self._detect_language(response)
@@ -152,7 +189,12 @@ class CoordinatorAgent:
         # Default response for unhandled stages
         return self.interviewer.llm.predict(response)
     
-    def evaluate_code(self, code: str, problem_statement: str, language: Optional[str] = None) -> Dict[str, Any]:
+    def evaluate_code(
+        self, 
+        code: str, 
+        problem_statement: str, 
+        language: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Evaluate a code submission using the code evaluator agent."""
         # Use code evaluator agent
         evaluation = self.code_evaluator.evaluate_code(
@@ -384,4 +426,16 @@ class CoordinatorAgent:
         elif "import React" in code or "export" in code:
             return "typescript"
         else:
-            return "unknown" 
+            return "unknown"
+    
+    def cleanup(self):
+        """Clean up resources used by this agent"""
+        # Clean up the LLM resources for each agent
+        if hasattr(self.interviewer, 'cleanup'):
+            self.interviewer.cleanup()
+        
+        if hasattr(self.code_evaluator, 'cleanup'):
+            self.code_evaluator.cleanup()
+        
+        if hasattr(self.final_evaluator, 'cleanup'):
+            self.final_evaluator.cleanup() 
