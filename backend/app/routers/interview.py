@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Form, File, UploadFile
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -65,10 +65,11 @@ class SessionManager:
         custom_api_key = custom_api_key if custom_api_key and custom_api_key.strip() else None
         custom_model_name = custom_model_name if custom_model_name and custom_model_name.strip() else None
         
+        existing_context = None
+        
         # Clean up existing coordinator if it exists
         if session_id in self.coordinators:
             # Get existing interview context to preserve it
-            existing_context = None
             if hasattr(self.coordinators[session_id], 'interview_context'):
                 existing_context = self.coordinators[session_id].interview_context
             
@@ -124,6 +125,7 @@ session_manager = SessionManager()
 def map_agent_stage_to_db_stage(agent_stage: AgentInterviewStage) -> DBInterviewStage:
     stage_mapping = {
         AgentInterviewStage.INTRODUCTION: DBInterviewStage.INTRODUCTION,
+        AgentInterviewStage.RESUME_DISCUSSION: DBInterviewStage.RESUME_DISCUSSION,
         AgentInterviewStage.TECHNICAL_QUESTIONS: DBInterviewStage.TECHNICAL_QUESTIONS,
         AgentInterviewStage.CODING_PROBLEM: DBInterviewStage.CODING_PROBLEM,
         AgentInterviewStage.CODE_EVALUATION: DBInterviewStage.CODE_EVALUATION,
@@ -133,26 +135,42 @@ def map_agent_stage_to_db_stage(agent_stage: AgentInterviewStage) -> DBInterview
     return stage_mapping.get(agent_stage, DBInterviewStage.INTRODUCTION)
 
 @router.post("/sessions")
-def create_interview_session(
-    session_data: InterviewSessionCreate,
+async def create_interview_session(
+    candidate_name: str = Form(...),
+    role: RoleType = Form(...),
+    difficulty: DifficultyLevel = Form(DifficultyLevel.MEDIUM),
+    custom_endpoint: Optional[str] = Form(None),
+    custom_api_key: Optional[str] = Form(None),
+    custom_model_name: Optional[str] = Form(None),
+    force_reinitialize: bool = Form(False),
+    resume: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Create a new interview session."""
-    # Check if custom settings are empty strings and convert to None
-    custom_endpoint = session_data.custom_endpoint if session_data.custom_endpoint and session_data.custom_endpoint.strip() else None
-    custom_api_key = session_data.custom_api_key if session_data.custom_api_key and session_data.custom_api_key.strip() else None
-    custom_model_name = session_data.custom_model_name if session_data.custom_model_name and session_data.custom_model_name.strip() else None
+    # Clean custom settings
+    custom_endpoint = custom_endpoint if custom_endpoint and custom_endpoint.strip() else None
+    custom_api_key = custom_api_key if custom_api_key and custom_api_key.strip() else None
+    custom_model_name = custom_model_name if custom_model_name and custom_model_name.strip() else None
     
     # Create a new session
     session = InterviewSession(
-        candidate_name=session_data.candidate_name,
-        role=session_data.role.value,
-        difficulty=session_data.difficulty.value
+        candidate_name=candidate_name,
+        role=role.value,
+        difficulty=difficulty.value
     )
     
     db.add(session)
     db.commit()
     db.refresh(session)
+    
+    # Parse resume if provided
+    resume_text = None
+    if resume:
+        import PyPDF2
+        reader = PyPDF2.PdfReader(resume.file)
+        resume_text = "".join(page.extract_text() or "" for page in reader.pages)
+        session.resume_text = resume_text
+        db.commit()
     
     # Create a fresh coordinator for the new session with custom settings if provided
     coordinator = session_manager.create_coordinator(
@@ -163,17 +181,20 @@ def create_interview_session(
     session_manager.coordinators[session.id] = coordinator
     session_manager.last_activity[session.id] = datetime.now()
     
+    # Seed resume text in coordinator context
+    if resume_text:
+        coordinator.interview_context["resume_text"] = resume_text
+    
     # Start the interview with introduction
     response = coordinator.start_interview(
-        candidate_name=session_data.candidate_name,
-        role=session_data.role.value,
-        difficulty=session_data.difficulty.value
+        candidate_name=candidate_name,
+        role=role.value,
+        difficulty=difficulty.value
     )
     
-    # Update session with initial response
+    # Update session with initial introduction notes
     session.interview_notes = coordinator.get_interview_notes()
     db.commit()
-    
     return {
         "session_id": session.id,
         "response": response,
@@ -220,8 +241,11 @@ def process_candidate_response(
     # Process response through the coordinator
     agent_response = coordinator.interviewer.handle_candidate_response(response_data.response)
     
-    # Update session with the updated interview notes
-    session.interview_notes = coordinator.get_interview_notes()
+    # Get the complete set of updated notes from the coordinator
+    current_notes = coordinator.get_interview_notes()
+    
+    # Update session with the latest notes
+    session.interview_notes = current_notes
     
     # Update the current stage in database
     session.current_stage = map_agent_stage_to_db_stage(coordinator.interviewer.current_stage)
@@ -314,8 +338,11 @@ def submit_code(
             "suggestions": []
         })
     
-    # Update session notes and stage
-    session.interview_notes = coordinator.get_interview_notes()
+    # Get the complete set of notes from the coordinator
+    current_notes = coordinator.get_interview_notes()
+    
+    # Update session notes
+    session.interview_notes = current_notes
     session.current_stage = map_agent_stage_to_db_stage(coordinator.interviewer.current_stage)
     
     db.commit()

@@ -7,11 +7,13 @@ from .prompts import (
     INTRODUCTION_TEMPLATE,
     TECHNICAL_QUESTIONS_TEMPLATE,
     CODE_PROBLEM_TEMPLATE,
-    INTERVIEWER_PERSONA
+    INTERVIEWER_PERSONA,
+    RESUME_DISCUSSION_TEMPLATE
 )
 
 class InterviewStage(str, Enum):
     INTRODUCTION = "introduction"
+    RESUME_DISCUSSION = "resume_discussion"
     TECHNICAL_QUESTIONS = "technical_questions"
     CODING_PROBLEM = "coding_problem"
     CODE_EVALUATION = "code_evaluation"
@@ -29,6 +31,7 @@ class InterviewerAgent(BaseAgent):
         
         # Initialize chains for different interview stages
         self.introduction_chain = self.create_chain(INTRODUCTION_TEMPLATE)
+        self.resume_discussion_chain = self.create_chain(RESUME_DISCUSSION_TEMPLATE)
         self.technical_questions_chain = self.create_chain(TECHNICAL_QUESTIONS_TEMPLATE)
         self.code_problem_chain = self.create_chain(CODE_PROBLEM_TEMPLATE)
     
@@ -131,6 +134,7 @@ class InterviewerAgent(BaseAgent):
         
         # Delegate to coordinator for processing if available
         if self.coordinator:
+            print("PROCESSSING")
             return self.coordinator.process_response(self.current_stage, response, self.interview_notes)
         
         # Fallback handling if no coordinator is available
@@ -172,3 +176,10 @@ class InterviewerAgent(BaseAgent):
             "stage": self.current_stage,
             "content": evaluation
         }) 
+    
+    def discuss_resume(self, resume_text: str) -> str:
+        """Discuss the candidate's resume."""
+        self.current_stage = InterviewStage.RESUME_DISCUSSION
+        response = self.resume_discussion_chain.run(human=resume_text)
+        self.interview_notes.append({"stage": self.current_stage, "content": response})
+        return response

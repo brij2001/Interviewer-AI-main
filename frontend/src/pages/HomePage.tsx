@@ -36,6 +36,7 @@ const HomePage: React.FC = () => {
   const [difficulty, setDifficulty] = useState('medium');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
 
   const handleStartInterview = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +49,7 @@ const HomePage: React.FC = () => {
     setError('');
 
     try {
-      const response = await interviewAPI.createSession(name, role, difficulty);
+      const response = await interviewAPI.createSession(name, role, difficulty, resumeFile);
       navigate(`/interview/${response.session_id}`);
     } catch (error) {
       console.error('Error starting interview:', error);
@@ -132,12 +133,19 @@ const HomePage: React.FC = () => {
             </Select>
           </FormControl>
 
-          {/* Coming soon: Resume Upload */}
-          {/* add a coming soon section */}
           <Box sx={{ mt: 2 }}>
-            <Typography color="gray" variant="h6" component="h2" gutterBottom>
-              Coming Soon: resume upload
-            </Typography>
+            <Button variant="outlined" component="label" fullWidth>
+              {resumeFile ? resumeFile.name : 'Upload Resume PDF (optional)'}
+              <input
+                type="file"
+                accept="application/pdf"
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) setResumeFile(file);
+                }}
+              />
+            </Button>
           </Box>
 
           <Button

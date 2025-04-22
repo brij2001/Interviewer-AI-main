@@ -11,6 +11,7 @@ class InterviewStage(enum.Enum):
     CODING_PROBLEM = "coding_problem"
     CODE_EVALUATION = "code_evaluation"
     FINAL_EVALUATION = "final_evaluation"
+    RESUME_DISCUSSION = "resume_discussion"
 
 class InterviewSession(Base):
     __tablename__ = "interview_sessions"
@@ -24,6 +25,7 @@ class InterviewSession(Base):
     current_stage = Column(Enum(InterviewStage), default=InterviewStage.INTRODUCTION)
     interview_notes = Column(JSON, default=list)
     final_evaluation = Column(Text, nullable=True)
+    resume_text = Column(Text, nullable=True)
 
     def to_dict(self):
         return {
@@ -35,7 +37,8 @@ class InterviewSession(Base):
             "updated_at": self.updated_at.isoformat(),
             "current_stage": self.current_stage.value,
             "interview_notes": self.interview_notes,
-            "final_evaluation": self.final_evaluation
+            "final_evaluation": self.final_evaluation,
+            "resume_text": self.resume_text
         }
 
 class CodeSubmissionModel(Base):

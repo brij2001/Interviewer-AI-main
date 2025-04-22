@@ -58,8 +58,10 @@ class CoordinatorAgent:
         self.interview_context["role"] = role
         self.interview_context["difficulty"] = difficulty
         
-        # Delegate to interviewer agent
-        return self.interviewer.start_interview(candidate_name)
+        # Begin with introduction
+        self.interview_context["current_stage"] = InterviewStage.INTRODUCTION
+        response = self.interviewer.start_interview(candidate_name)
+        return response
     
     def _update_api_settings(self, custom_endpoint: Optional[str] = None, custom_api_key: Optional[str] = None, custom_model_name: Optional[str] = None):
         """Update API settings for all agents"""
@@ -84,7 +86,17 @@ class CoordinatorAgent:
         self._update_context_from_response(current_stage, response)
         
         # Handle different stages with appropriate agents
-        if current_stage == InterviewStage.INTRODUCTION:
+        if current_stage == InterviewStage.INTRODUCTION and self.interview_context.get("resume_text"):
+            # After introduction, discuss resume if provided
+            self.interview_context["current_stage"] = InterviewStage.RESUME_DISCUSSION
+            resume_text = self.interview_context.get("resume_text", "")
+            resume_response = self.interviewer.discuss_resume(resume_text)
+            self.interview_context["background"] = resume_text
+            # Move next to technical questions
+            self.interview_context["current_stage"] = InterviewStage.TECHNICAL_QUESTIONS
+            return resume_response
+        
+        elif current_stage == InterviewStage.INTRODUCTION:
             # After introduction, move to technical questions
             # Extract background information from the candidate's response
             background = self._extract_background_from_response(response)
@@ -104,6 +116,9 @@ class CoordinatorAgent:
             
             # Provide context from the technical discussion to the coding problem
             technical_context = self._extract_technical_context(interview_notes, response)
+            print("changed to coding problem")
+            # Explicitly set the stage to coding problem
+            self.interviewer.current_stage = InterviewStage.CODING_PROBLEM
             
             # Transition to coding problem with context from the discussion
             return self.interviewer.present_coding_problem(
@@ -285,6 +300,8 @@ class CoordinatorAgent:
     
     def get_interview_notes(self) -> List[Dict]:
         """Get complete interview notes."""
+        if not hasattr(self.interviewer, 'interview_notes'):
+            return []
         return self.interviewer.get_interview_notes()
     
     def _update_context_from_response(self, current_stage: InterviewStage, response: str) -> None:
